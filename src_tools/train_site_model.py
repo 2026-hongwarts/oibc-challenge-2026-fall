@@ -1,11 +1,11 @@
 """발전소 단위 LightGBM 학습·예측. 옵션을 안 주면 E4-00(baseline.py 재현).
 
-    python src/train_site_model.py --exp E4-00                     가상 평가연도 예측 → outputs/preds/E4-00.parquet, 바로 채점
-    python src/train_site_model.py --exp E3-01 --drop-dead         정지일 빼고 학습
-    python src/train_site_model.py --exp E2-01 --rounds both       두 라운드 예보를 한 모델에
-    python src/train_site_model.py --exp E2-02 --add features_weather:add_weather_features
-    python src/train_site_model.py --exp E4-00 --mode test         컷오프 2025-06 으로 학습 → outputs/preds_test/E4-00.parquet
-    python src/train_site_model.py --exp E2-01x2 --rounds both --seeds 2    채택 판단용(시드 2개 평균)
+    python src_tools/train_site_model.py --exp E4-00                     가상 평가연도 예측 → outputs/preds/E4-00.parquet, 바로 채점
+    python src_tools/train_site_model.py --exp E3-01 --drop-dead         정지일 빼고 학습
+    python src_tools/train_site_model.py --exp E2-01 --rounds both       두 라운드 예보를 한 모델에
+    python src_tools/train_site_model.py --exp E2-02 --add features_weather:add_weather_features
+    python src_tools/train_site_model.py --exp E4-00 --mode test         컷오프 2025-06 으로 학습 → outputs/preds_test/E4-00.parquet
+    python src_tools/train_site_model.py --exp E2-01x2 --rounds both --seeds 2    채택 판단용(시드 2개 평균)
 
 시드 하나만 바꿔도 가상 평가연도 벌금이 약 0.5% 움직인다(E4-00 seed 0 vs 1: +0.51%).
 그래서 채택 여부는 --seeds 2 결과를 기준 모델(역시 시드 2개)과 비교해 정한다.
