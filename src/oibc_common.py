@@ -10,10 +10,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]   # 저장소 루트 (이 파일은 src/ 안)
 DATA = ROOT / "01_participant_dataset"
-WORK = ROOT / "work"        # 공통 테이블 (build_base.py)
-PREDS = ROOT / "preds"      # 가상 평가연도 예측 (실험번호.parquet)
+OUTPUTS = ROOT / "outputs"
+WORK = OUTPUTS / "work"              # 공통 테이블 (build_base.py)
+PREDS = OUTPUTS / "preds"            # 가상 평가연도 예측 (실험번호.parquet)
+PREDS_TEST = OUTPUTS / "preds_test"  # 실제 평가 기간 예측
 TZ = "Asia/Seoul"
 
 TOTAL_CAP_KW = 42_655.4

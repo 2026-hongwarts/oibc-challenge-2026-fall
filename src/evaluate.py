@@ -1,11 +1,11 @@
 """가상 평가연도 채점기 — 대회 점수식 그대로, 모두가 이것 하나로 채점한다.
 
-    python evaluate.py preds/E2-01.parquet                        기준 모델(preds/champion.txt) 대비로 출력
-    python evaluate.py preds/E2-01.parquet --ref preds/E4-00.parquet
-    python evaluate.py preds/E5-01.parquet --composition my_composition.csv
+    python src/evaluate.py outputs/preds/E2-01.parquet                        기준 모델(outputs/preds/champion.txt) 대비로 출력
+    python src/evaluate.py outputs/preds/E2-01.parquet --ref outputs/preds/E4-00.parquet
+    python src/evaluate.py outputs/preds/E5-01.parquet --composition my_composition.csv
 
 예측 파일 (parquet)
-    발전소별: site_id, ts, pred_kwh   — work/base.parquet 의 valid 행(2024-06-01 01:00 ~ 2025-06-01 00:00)을 모두 덮어야 함
+    발전소별: site_id, ts, pred_kwh   — outputs/work/base.parquet 의 valid 행(2024-06-01 01:00 ~ 2025-06-01 00:00)을 모두 덮어야 함
     묶음별  : group, ts, pred_kwh     — G1·G2 × 가상 평가연도 8,760시각
     ts 는 타임존이 있어야 하고, pred_kwh 는 0 이상, NaN 없음.
 
@@ -122,7 +122,7 @@ def champion_path() -> Path | None:
     path = PREDS / f"{name}.parquet"
     if not path.exists():
         print(f"  [안내] 기준 모델 예측 {path.name} 이 이 PC에 없어 비교 없이 채점합니다. "
-              f"만들려면: python train_site_model.py --exp {name} --seeds 2", file=sys.stderr)
+              f"만들려면: python src/train_site_model.py --exp {name} --seeds 2", file=sys.stderr)
         return None
     return path
 
@@ -160,8 +160,8 @@ def report(path: str | Path, ref: str | Path | None = None, composition: str | N
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="가상 평가연도 채점기")
-    ap.add_argument("preds", help="예측 파일 (preds/실험번호.parquet)")
-    ap.add_argument("--ref", default=None, help="비교 기준 예측 파일 (기본: preds/champion.txt 의 모델)")
+    ap.add_argument("preds", help="예측 파일 (outputs/preds/실험번호.parquet)")
+    ap.add_argument("--ref", default=None, help="비교 기준 예측 파일 (기본: outputs/preds/champion.txt 의 모델)")
     ap.add_argument("--no-ref", action="store_true", help="기준 대비 비교를 하지 않음")
     ap.add_argument("--composition", default=None, help="site_id,group CSV (기본: 참조 구성)")
     args = ap.parse_args()
