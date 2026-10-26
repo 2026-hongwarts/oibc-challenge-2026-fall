@@ -122,7 +122,7 @@ def champion_path() -> Path | None:
     path = PREDS / f"{name}.parquet"
     if not path.exists():
         print(f"  [안내] 기준 모델 예측 {path.name} 이 이 PC에 없어 비교 없이 채점합니다. "
-              f"만들려면: python src_tools/train_site_model.py --exp {name} --seeds 2", file=sys.stderr)
+              f"만들려면: python src_tools/train_site_model.py --base {name}", file=sys.stderr)
         return None
     return path
 

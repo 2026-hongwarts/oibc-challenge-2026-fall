@@ -52,23 +52,25 @@
    ```
    python src_tools/build_base.py
    ```
-4. 기준 모델 예측을 각자 PC에서 한 번 만든다. PC나 라이브러리 버전에 따라 숫자가 조금 다를 수 있으니, 비교는 같은 PC에서 만든 결과끼리 한다.
+4. 기준 모델 예측을 각자 PC에서 한 번 만든다. 기준 모델이 바뀔 때마다(`git pull` 후 `champion.txt`가 바뀌면) 다시 실행한다. PC나 라이브러리 버전에 따라 숫자가 조금 다를 수 있으니, 비교는 같은 PC에서 만든 결과끼리 한다.
    ```
-   python src_tools/train_site_model.py --exp E4-00x2 --seeds 2
+   python src_tools/train_site_model.py --base champion
    ```
 
 ## 실험
 
+실험은 항상 기준 모델 위에 변경 하나를 얹는다. `--base champion`이 기준 모델 설정(시드 2개 포함)을 그대로 불러온다.
+
 ```
-python src_tools/train_site_model.py --exp E3-01 --drop-dead                # 탐색용 (시드 1개)
-python src_tools/train_site_model.py --exp E3-01x2 --drop-dead --seeds 2    # 채택 판단용 (시드 2개 평균)
-python src_tools/train_site_model.py --exp E2-02 --add features_weather:add_weather_features
-python src_tools/evaluate.py outputs/preds/E3-01x2.parquet                  # 채점만 다시
+python src_tools/train_site_model.py --exp E2-02x2 --base champion --add features_weather:add_ceiling
+python src_tools/train_site_model.py --exp E3-04x2 --base champion --add features_site:mark_partial_outage --drop-dead
+python src_tools/evaluate.py outputs/preds/E2-02x2.parquet                  # 채점만 다시
+python src_tools/train_site_model.py --base champion --mode test            # 기준 모델로 실제 평가 기간 예측
 ```
 
-- 결과는 `outputs/preds/실험번호.parquet`에 저장되고, `outputs/preds/champion.txt`가 가리키는 기준 모델과 바로 비교된다.
-- 옵션: `--drop-dead` 정지일 제외 · `--rounds both|10|17|avg` · `--years N` 학습 기간 · `--weight cap|cap_k` · `--objective l1` · `--params '{"num_leaves": 63}'` · `--mode test` 실제 평가 기간 예측
-- 피처 함수는 `src_tools/features_*.py`에 만든다. 규칙은 [src_tools/train_site_model.py](src_tools/train_site_model.py) 맨 위 설명에 있다. 발전량으로 만드는 값은 `df[df.is_fit]`에서만 계산한다.
+- 결과는 `outputs/preds/실험번호.parquet`에 저장되고, `outputs/preds/champion.txt`가 가리키는 기준 모델과 바로 비교된다. 설정은 같은 이름의 `.json`에 남는다.
+- 옵션: `--drop-dead` 정지일 제외 · `--rounds both|10|17|avg` · `--years N` 학습 기간 · `--weight cap|cap_k` · `--objective l1|l2` · `--params '{"num_leaves": 63}'` · `--seeds N` · `--mode test` 실제 평가 기간 예측
+- 피처 함수는 `src_tools/features_*.py`에 만든다. 규칙은 [src_tools/train_site_model.py](src_tools/train_site_model.py) 맨 위 설명에 있다. 발전량으로 만드는 값은 `df[df.is_fit]`에서만 계산한다(예측 행의 실적은 스크립트가 미리 지워서 넘긴다).
 
 ## 규칙
 
