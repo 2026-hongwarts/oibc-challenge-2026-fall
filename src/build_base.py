@@ -1,6 +1,6 @@
 """공통 테이블 만들기 — 모든 실험이 같은 데이터에서 출발하도록.
 
-    python build_base.py        # work/base.parquet, work/base_test.parquet 생성 (메모리 약 6GB)
+    python src/build_base.py    # outputs/work/base.parquet, base_test.parquet 생성 (메모리 약 6GB)
 
 base.parquet       학습 구간 발전량의 모든 행(2021-01 ~ 2025-06-01 00:00).
                    split = 'train'(< 2024-06-01 01:00) | 'valid'(가상 평가연도)
@@ -75,7 +75,7 @@ def finish(d: pd.DataFrame) -> pd.DataFrame:
 
 
 def main() -> None:
-    WORK.mkdir(exist_ok=True)
+    WORK.mkdir(parents=True, exist_ok=True)
     sites = load_sites()
     gen = pd.read_parquet(DATA / "train" / "generation.parquet")
     gen["ts"] = pd.to_datetime(gen.ts).dt.as_unit("ns")
@@ -93,7 +93,7 @@ def main() -> None:
     train_idx = pd.date_range(b.ts.min(), b.ts.max(), freq="h")
     b = finish(attach_forecasts(b, "train", train_idx))
     b.to_parquet(WORK / "base.parquet", index=False, compression="zstd")
-    log(f"저장 work/base.parquet  {b.shape}  (train {int((b.split == 'train').sum()):,} / valid {int((b.split == 'valid').sum()):,})")
+    log(f"저장 outputs/work/base.parquet  {b.shape}  (train {int((b.split == 'train').sum()):,} / valid {int((b.split == 'valid').sum()):,})")
     fc = [c for c in b.columns if c.endswith(("_r10", "_r17"))]
     log(f"  예보 열 {len(fc)}개, 예보 결측 비율 최대 {b[fc].isna().mean().max() * 100:.2f}%")
     del b
@@ -106,7 +106,7 @@ def main() -> None:
     t = finish(attach_forecasts(t, "test", test_idx))
     t.to_parquet(WORK / "base_test.parquet", index=False, compression="zstd")
     fc = [c for c in t.columns if c.endswith(("_r10", "_r17"))]
-    log(f"저장 work/base_test.parquet  {t.shape}, 예보 결측 행 {int(t[fc].isna().any(axis=1).sum())}")
+    log(f"저장 outputs/work/base_test.parquet  {t.shape}, 예보 결측 행 {int(t[fc].isna().any(axis=1).sum())}")
     assert len(t) == len(sites) * len(test_idx)
 
 
