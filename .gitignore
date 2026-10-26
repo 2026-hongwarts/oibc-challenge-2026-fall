@@ -1,6 +1,5 @@
 # 대회 데이터와 거기서 만든 큰 파일은 올리지 않는다
 01_participant_dataset/
-archive/
 outputs/work/
 outputs/preds/*.parquet
 outputs/preds_test/
