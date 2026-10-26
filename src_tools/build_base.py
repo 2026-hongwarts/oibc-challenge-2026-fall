@@ -1,6 +1,6 @@
 """공통 테이블 만들기 — 모든 실험이 같은 데이터에서 출발하도록.
 
-    python src/build_base.py    # outputs/work/base.parquet, base_test.parquet 생성 (메모리 약 6GB)
+    python src_tools/build_base.py    # outputs/work/base.parquet, base_test.parquet 생성 (메모리 약 6GB)
 
 base.parquet       학습 구간 발전량의 모든 행(2021-01 ~ 2025-06-01 00:00).
                    split = 'train'(< 2024-06-01 01:00) | 'valid'(가상 평가연도)

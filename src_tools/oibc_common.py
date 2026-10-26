@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]   # 저장소 루트 (이 파일은 src/ 안)
+ROOT = Path(__file__).resolve().parents[1]   # 저장소 루트 (이 파일은 src_tools/ 안)
 DATA = ROOT / "01_participant_dataset"
 OUTPUTS = ROOT / "outputs"
 WORK = OUTPUTS / "work"              # 공통 테이블 (build_base.py)

@@ -4,19 +4,19 @@
 
 - 역할 분담·일정: https://claude.ai/artifact/VqqzYusqpUCfzMm7EiFk4i
 - 계획서: [docs/eda_preprocessing_plan.md](docs/eda_preprocessing_plan.md)
-- EDA: [notebooks/eda_v2.ipynb](notebooks/eda_v2.ipynb) — 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
+- EDA: [analysis_lab/eda_v2.ipynb](analysis_lab/eda_v2.ipynb) — 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
 
 ## 폴더
 
 ```
-├─ src/                   코드. 팀원이 만드는 피처 파일(features_*.py)도 여기
+├─ src_tools/             공구함: 팀 전체가 같이 쓰는 코드. 팀원 피처 파일(features_*.py)도 여기
 │  ├─ oibc_common.py      공통 함수: 점수식, 데이터 읽기, 태양 기하, 정지일 탐지, 구성 탐색
 │  ├─ build_base.py       공통 테이블 만들기
 │  ├─ train_site_model.py 발전소 단위 LightGBM 학습·예측 (옵션 없이 돌리면 baseline 재현)
 │  └─ evaluate.py         가상 평가연도(2024-06 ~ 2025-05) 채점기
-├─ notebooks/             분석 노트북
+├─ analysis_lab/          실험 노트: src_tools 를 불러다 분석하고 결론을 남기는 노트북
 │  └─ eda_v2.ipynb        EDA. 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
-├─ docs/                  계획서, 대회 설명
+├─ docs/                  읽는 문서: 계획서, 대회 설명
 ├─ outputs/               실행하면 생기는 파일
 │  ├─ work/               공통 테이블                      (git 제외)
 │  ├─ preds/              가상 평가연도 예측. *.json 과 champion.txt 만 git 에 올림
@@ -26,6 +26,8 @@
 ├─ 01_participant_dataset/  대회 데이터 — 각자 받아서 둔다  (git 제외)
 └─ archive/               옛 버전                           (git 제외)
 ```
+
+**src_tools 와 analysis_lab 의 구분**: `src_tools`는 고치면 팀 전체 결과가 달라지는 공용 도구이고, `analysis_lab`은 각자 분석하고 결론을 남기는 노트다. 노트북은 `src_tools`를 불러다 쓰지만 반대는 없다. 노트북에서 만든 함수가 여러 사람에게 필요해지면 `src_tools`로 옮긴다. 분석 노트북은 `analysis_lab/담당_주제.ipynb`처럼 이름을 붙인다(예: `E5_오차리포트.ipynb`).
 
 ## EDA에서 정한 것
 
@@ -37,9 +39,9 @@
 | 구성으로 줄일 수 있는 벌금은 약 1%, 지역별로 나누면 +12% | 구성은 지역 분할만 피하고 마지막에 다듬기 |
 | 고장 난 날 729건, 편입 후 결측은 거의 없음, 평가 기간 예보 264행 빠짐 | 정지일은 학습에서 제외, 보간은 안 함, 빠진 예보는 다른 라운드로 채움 |
 | 운량·습도·운고(`wb_ceiling`)가 핵심 변수, 두 라운드 평균이 더 나음 | 피처 우선순위 |
-| 가상 평가연도 채점 방식의 원형을 만듦 | `src/evaluate.py`로 정식화 |
+| 가상 평가연도 채점 방식의 원형을 만듦 | `src_tools/evaluate.py`로 정식화 |
 
-노트북 §9의 빠른 모델(벌금 223,789,723원)은 채점 방식을 시험한 원형이다. 팀의 공식 기준 모델은 `src/train_site_model.py`로 만든 E4-00x2(223,140,191원)다.
+노트북 §9의 빠른 모델(벌금 223,789,723원)은 채점 방식을 시험한 원형이다. 팀의 공식 기준 모델은 `src_tools/train_site_model.py`로 만든 E4-00x2(223,140,191원)다.
 
 ## 준비
 
@@ -49,25 +51,25 @@
 2. 대회 데이터를 `01_participant_dataset/`에 둔다.
 3. 공통 테이블 만들기 (약 2분, 메모리 약 6GB)
    ```
-   python src/build_base.py
+   python src_tools/build_base.py
    ```
 4. 기준 모델 예측을 각자 PC에서 한 번 만든다. PC나 라이브러리 버전에 따라 숫자가 조금 다를 수 있으니, 비교는 같은 PC에서 만든 결과끼리 한다.
    ```
-   python src/train_site_model.py --exp E4-00x2 --seeds 2
+   python src_tools/train_site_model.py --exp E4-00x2 --seeds 2
    ```
 
 ## 실험
 
 ```
-python src/train_site_model.py --exp E3-01 --drop-dead                # 탐색용 (시드 1개)
-python src/train_site_model.py --exp E3-01x2 --drop-dead --seeds 2    # 채택 판단용 (시드 2개 평균)
-python src/train_site_model.py --exp E2-02 --add features_weather:add_weather_features
-python src/evaluate.py outputs/preds/E3-01x2.parquet                  # 채점만 다시
+python src_tools/train_site_model.py --exp E3-01 --drop-dead                # 탐색용 (시드 1개)
+python src_tools/train_site_model.py --exp E3-01x2 --drop-dead --seeds 2    # 채택 판단용 (시드 2개 평균)
+python src_tools/train_site_model.py --exp E2-02 --add features_weather:add_weather_features
+python src_tools/evaluate.py outputs/preds/E3-01x2.parquet                  # 채점만 다시
 ```
 
 - 결과는 `outputs/preds/실험번호.parquet`에 저장되고, `outputs/preds/champion.txt`가 가리키는 기준 모델과 바로 비교된다.
 - 옵션: `--drop-dead` 정지일 제외 · `--rounds both|10|17|avg` · `--years N` 학습 기간 · `--weight cap|cap_k` · `--objective l1` · `--params '{"num_leaves": 63}'` · `--mode test` 실제 평가 기간 예측
-- 피처 함수는 `src/features_*.py`에 만든다. 규칙은 [src/train_site_model.py](src/train_site_model.py) 맨 위 설명에 있다. 발전량으로 만드는 값은 `df[df.is_fit]`에서만 계산한다.
+- 피처 함수는 `src_tools/features_*.py`에 만든다. 규칙은 [src_tools/train_site_model.py](src_tools/train_site_model.py) 맨 위 설명에 있다. 발전량으로 만드는 값은 `df[df.is_fit]`에서만 계산한다.
 
 ## 규칙
 

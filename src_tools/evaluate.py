@@ -1,8 +1,8 @@
 """가상 평가연도 채점기 — 대회 점수식 그대로, 모두가 이것 하나로 채점한다.
 
-    python src/evaluate.py outputs/preds/E2-01.parquet                        기준 모델(outputs/preds/champion.txt) 대비로 출력
-    python src/evaluate.py outputs/preds/E2-01.parquet --ref outputs/preds/E4-00.parquet
-    python src/evaluate.py outputs/preds/E5-01.parquet --composition my_composition.csv
+    python src_tools/evaluate.py outputs/preds/E2-01.parquet                        기준 모델(outputs/preds/champion.txt) 대비로 출력
+    python src_tools/evaluate.py outputs/preds/E2-01.parquet --ref outputs/preds/E4-00.parquet
+    python src_tools/evaluate.py outputs/preds/E5-01.parquet --composition my_composition.csv
 
 예측 파일 (parquet)
     발전소별: site_id, ts, pred_kwh   — outputs/work/base.parquet 의 valid 행(2024-06-01 01:00 ~ 2025-06-01 00:00)을 모두 덮어야 함
@@ -122,7 +122,7 @@ def champion_path() -> Path | None:
     path = PREDS / f"{name}.parquet"
     if not path.exists():
         print(f"  [안내] 기준 모델 예측 {path.name} 이 이 PC에 없어 비교 없이 채점합니다. "
-              f"만들려면: python src/train_site_model.py --exp {name} --seeds 2", file=sys.stderr)
+              f"만들려면: python src_tools/train_site_model.py --exp {name} --seeds 2", file=sys.stderr)
         return None
     return path
 
