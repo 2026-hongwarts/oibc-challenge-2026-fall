@@ -23,8 +23,7 @@
 │  ├─ preds_test/         실제 평가 기간 예측               (git 제외)
 │  ├─ submissions/        제출 파일                         (git 제외)
 │  └─ eda/                노트북 산출물                     (git 제외)
-├─ 01_participant_dataset/  대회 데이터 — 각자 받아서 둔다  (git 제외)
-└─ archive/               옛 버전                           (git 제외)
+└─ 01_participant_dataset/  대회 데이터 — 각자 받아서 둔다  (git 제외)
 ```
 
 **src_tools 와 analysis_lab 의 구분**: `src_tools`는 고치면 팀 전체 결과가 달라지는 공용 도구이고, `analysis_lab`은 각자 분석하고 결론을 남기는 노트다. 노트북은 `src_tools`를 불러다 쓰지만 반대는 없다. 노트북에서 만든 함수가 여러 사람에게 필요해지면 `src_tools`로 옮긴다. 분석 노트북은 `analysis_lab/담당_주제.ipynb`처럼 이름을 붙인다(예: `E5_오차리포트.ipynb`).

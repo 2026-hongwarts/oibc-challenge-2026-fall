@@ -2,7 +2,7 @@
 
 > **대회**: 2026 POSTECH OIBC Big Data Challenge × 제6회 POSTECH·UNIST·KAIST AI & 데이터사이언스 경진대회
 > **v1** 2026-10-08 → **v2** 2026-10-25 (EDA 결과 수치·확인된 대회 규칙 반영) · **마감 2026-11-13**
-> **근거**: `analysis_lab/eda_v2.ipynb`(v2, 실행 결과 포함) · **공통 코드**: `src_tools/` · **v1 원본**: `archive/`
+> **근거**: `analysis_lab/eda_v2.ipynb`(v2, 실행 결과 포함) · **공통 코드**: `src_tools/`
 
 이 문서의 수치는 모두 v2 노트북에서 나온 값이다. "가설"이라고 적힌 것만 아직 검증하지 않았다.
 
