@@ -1,0 +1,12 @@
+# 대회 데이터와 거기서 만든 큰 파일은 올리지 않는다
+01_participant_dataset/
+work/
+preds/*.parquet
+preds_test/
+submissions/
+eda_out/
+archive/
+
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
