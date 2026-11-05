@@ -93,6 +93,13 @@ def add_clearsky(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def add_site_features(df: pd.DataFrame) -> pd.DataFrame:
+    """③ 전달용: 채택된 피처만 (= E3-02b 맑은날 기준값 교차 계산, E1-01x2 대비 -2.35%).
+    기각: E3-02(자기 실적 섞임 +5.05%), E3-03 청천 일사(-0.20%), E3-04 정지·부분 정지 제외(+0.51%),
+    E3-06 관측지점 대체(E3-02b 대비 +0.43%). 학습 제외 규칙은 없음(정지일 포함 학습 유지)."""
+    return add_clear_ref_oof(df)
+
+
 def mark_partial_outage(df: pd.DataFrame) -> pd.DataFrame:
     """E3-04 부분 정지: 같은 시각 다른 발전소 중앙 cf ≥ 0.3 인데 혼자 ≤ 0.02 인 학습 행을 is_dead 로. --drop-dead 와 함께."""
     fit = df.is_fit & (df.elev > 20)
