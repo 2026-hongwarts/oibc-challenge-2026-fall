@@ -41,7 +41,7 @@ import lightgbm as lgb
 import numpy as np
 import pandas as pd
 
-from oibc_common import PREDS, PREDS_TEST, ROOT, TEST_FROM, VALID_FROM, WORK, k_weight
+from oibc_common import PREDS, PREDS_TEST, ROOT, TEST_FROM, TZ, VALID_FROM, WORK, k_weight
 
 WA_COLS = ["wa_cloud", "wa_temp", "wa_humidity", "wa_rain", "wa_wind_speed", "wa_ground_press"]
 WB_COLS = ["wb_cloud", "wb_temp", "wb_rel_hum", "wb_uv_idx", "wb_precip_prob", "wb_total_liq",
@@ -70,13 +70,25 @@ def model_feature_sets(rounds: str) -> list[list[str]]:
     return [round_feats(int(rounds))]
 
 
-def load_frame(mode: str, years: float) -> pd.DataFrame:
+def cut_window(cut: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+    """--cut YYYY-MM-DD: 그날 01:00 부터 1년을 검증 구간으로 (다른 해 검증용)."""
+    start = pd.Timestamp(f"{cut} 01:00", tz=TZ)
+    return start, start + pd.DateOffset(years=1)
+
+
+def load_frame(mode: str, years: float, cut: str | None = None) -> pd.DataFrame:
     base = pd.read_parquet(WORK / "base.parquet")
-    cut = VALID_FROM if mode == "valid" else TEST_FROM
-    fit = base[base.ts < cut]
+    if cut:
+        start, end = cut_window(cut)
+    else:
+        start = VALID_FROM if mode == "valid" else TEST_FROM
+    fit = base[base.ts < start]
     if years:
-        fit = fit[fit.ts >= cut - pd.DateOffset(months=int(round(years * 12)))]
-    pred = base[base.split == "valid"] if mode == "valid" else pd.read_parquet(WORK / "base_test.parquet")
+        fit = fit[fit.ts >= start - pd.DateOffset(months=int(round(years * 12)))]
+    if cut:
+        pred = base[(base.ts >= start) & (base.ts < end)]
+    else:
+        pred = base[base.split == "valid"] if mode == "valid" else pd.read_parquet(WORK / "base_test.parquet")
     del base
     df = pd.concat([fit.assign(is_fit=True), pred.assign(is_fit=False)], ignore_index=True)
     df["site_id"] = df.site_id.astype(str)
@@ -142,6 +154,8 @@ def main() -> None:
                     help="이 실험의 설정에서 출발 (보통 champion)")
     ap.add_argument("--mode", choices=["valid", "test"], default="valid",
                     help="valid: 2024-05 까지 학습 → 가상 평가연도 예측 / test: 2025-05 까지 학습 → 실제 평가 기간 예측")
+    ap.add_argument("--cut", default=None, metavar="YYYY-MM-DD",
+                    help="다른 해 검증: 이 날짜 전까지로 학습하고 그날부터 1년을 채점 (예: 2023-06-01). 결과 이름 끝에 _cut연도")
     ap.add_argument("--rounds", choices=["avg", "both", "10", "17"], default=None, help="기본 avg")
     ap.add_argument("--years", type=float, default=None, help="컷오프 전 학습 기간(년). 0 이면 전체. 기본 2")
     ap.add_argument("--drop-dead", action=argparse.BooleanOptionalAction, default=None,
@@ -156,9 +170,13 @@ def main() -> None:
                     help="시드 개수. 2 이상이면 seed, seed+1, … 모델의 예측을 평균 (채택 판단은 2로). 기본 1")
     args = ap.parse_args()
     exp, cfg, base_name = resolve_config(args)
+    if args.cut:
+        if args.mode != "valid":
+            raise SystemExit("--cut 은 --mode valid 에서만 쓴다")
+        exp = f"{exp}_cut{args.cut[:4]}"
     log(f"실험 {exp}" + (f" (base {base_name})" if base_name else "") + f": {cfg}")
 
-    df = load_frame(args.mode, cfg["years"])
+    df = load_frame(args.mode, cfg["years"], args.cut)
     df.loc[~df.is_fit, ["energy", "cf"]] = np.nan          # 누설 방지: 예측 행의 실적을 지운다
     df["is_dead"] = df.is_dead.eq(True) & df.is_fit
     log(f"mode={args.mode}: 학습 후보 {int(df.is_fit.sum()):,}행 / 예측 {int((~df.is_fit).sum()):,}행")
@@ -194,14 +212,25 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"{exp}.parquet"
     out.to_parquet(path, index=False)
-    meta = {"exp": exp, "mode": args.mode, "base": base_name,
+    meta = {"exp": exp, "mode": args.mode, "cut": args.cut, "base": base_name,
             **{k: v for k, v in cfg.items() if k != "params"}, "params_override": cfg["params"],
             "params": params, "features": feature_sets, "n_train": len(tr),
             "train_period": [str(tr.ts.min()), str(tr.ts.max())], "created": datetime.now().isoformat(timespec="seconds")}
     path.with_suffix(".json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
     log(f"저장 {path.relative_to(ROOT)} ({len(out):,}행)")
 
-    if args.mode == "valid":
+    if args.cut:
+        from evaluate import evaluate_preds, read_preds
+        start, end = cut_window(args.cut)
+        a = pd.read_parquet(WORK / "base.parquet", columns=["site_id", "ts", "energy"])
+        a = a[(a.ts >= start) & (a.ts < end)].reset_index(drop=True)
+        a["site_id"] = a.site_id.astype(str)
+        r = evaluate_preds(read_preds(path), actual=a)
+        print(f"\n[{exp}] 다른 해 검증 {start:%Y-%m} ~ {end - pd.Timedelta(hours=1):%Y-%m} · 참조 구성 · 발전소 {r['n_sites']}곳")
+        print(f"  벌금          {r['penalty']:>15,.0f}원   (수익의 {r['penalty'] / r['revenue'] * 100:.2f}%)")
+        print(f"  11~15시 벌금  {r['peak']:>15,.0f}원")
+        print("  비교하려면 기준 모델도 같은 --cut 으로 돌린다")
+    elif args.mode == "valid":
         from evaluate import report
         report(path)
 
