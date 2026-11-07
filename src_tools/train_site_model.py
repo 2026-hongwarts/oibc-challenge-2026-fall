@@ -51,7 +51,7 @@ PARAMS = dict(n_estimators=600, learning_rate=0.06, num_leaves=127, min_child_sa
               subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=-1)
 OBJECTIVE = {"l2": "regression", "l1": "regression_l1"}
 DEFAULTS = dict(rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
-                add=[], params={}, seed=0, seeds=1)
+                add=[], drop=[], params={}, seed=0, seeds=1)
 
 t0 = time.time()
 log = lambda m: print(f"[{time.time() - t0:5.0f}s] {m}", flush=True)
@@ -141,6 +141,7 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
     if args.params is not None:
         cfg["params"] = {**cfg["params"], **json.loads(args.params)}
     cfg["add"] = list(dict.fromkeys(cfg["add"] + (args.add or [])))
+    cfg["drop"] = list(dict.fromkeys(cfg.get("drop", []) + (args.drop or [])))
     exp = args.exp or base_name
     if not exp:
         raise SystemExit("--exp 실험 번호를 주거나 --base 로 다시 만들 실험을 지정하세요")
@@ -164,6 +165,8 @@ def main() -> None:
                     help="표본 가중치: cap = 설비용량, cap_k = 설비용량 × k(11~15시 3). 기본 none")
     ap.add_argument("--objective", choices=list(OBJECTIVE), default=None, help="기본 l2")
     ap.add_argument("--add", action="append", default=None, metavar="모듈:함수", help="피처 함수")
+    ap.add_argument("--drop", action="append", default=None, metavar="변수",
+                    help="입력에서 뺄 피처. 예보 변수는 이름만 주면 _r10·_r17 둘 다 뺀다 (예: wa_ground_press)")
     ap.add_argument("--params", default=None, help='LightGBM 파라미터 덮어쓰기 JSON. 예: \'{"num_leaves": 63}\'')
     ap.add_argument("--seed", type=int, default=None, help="첫 시드. 기본 0")
     ap.add_argument("--seeds", type=int, default=None,
@@ -197,7 +200,8 @@ def main() -> None:
     seeds = [cfg["seed"] + i for i in range(cfg["seeds"])]
     preds, feature_sets = [], []
     for cols in sets:
-        feats = cols + COMMON + added
+        feats = [c for c in cols + COMMON + added
+                 if not any(c == d or c in (f"{d}_r10", f"{d}_r17") for d in cfg["drop"])]
         feature_sets.append(feats)
         X_tr, X_pr = tr[feats].astype("float32"), pr[feats].astype("float32")
         for s in seeds:
