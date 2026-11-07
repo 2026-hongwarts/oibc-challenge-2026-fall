@@ -13,7 +13,10 @@
 │  ├─ oibc_common.py      공통 함수: 점수식, 데이터 읽기, 태양 기하, 정지일 탐지, 구성 탐색
 │  ├─ build_base.py       공통 테이블 만들기
 │  ├─ train_site_model.py 발전소 단위 LightGBM 학습·예측 (옵션 없이 돌리면 baseline 재현)
-│  └─ evaluate.py         가상 평가연도(2024-06 ~ 2025-05) 채점기
+│  ├─ evaluate.py         가상 평가연도(2024-06 ~ 2025-05) 채점기
+│  ├─ make_submission.py  제출 파일(composition.csv, forecast.csv) 만들기 + 형식 검사
+│  ├─ features_weather.py 예보 피처 (add_weather_features = 기준 모델에 들어간 하루 요약 11개)
+│  └─ features_site.py    발전소 피처 (add_site_features = 맑은날 기준값, 후보)
 ├─ analysis_lab/          실험 노트: src_tools 를 불러다 분석하고 결론을 남기는 노트북
 │  └─ eda_v2.ipynb        EDA. 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
 ├─ docs/                  읽는 문서: 계획서, 대회 설명
@@ -66,6 +69,8 @@ python src_tools/train_site_model.py --exp E2-02x2 --base champion --add feature
 python src_tools/train_site_model.py --exp E3-04x2 --base champion --add features_site:mark_partial_outage --drop-dead
 python src_tools/evaluate.py outputs/preds/E2-02x2.parquet                  # 채점만 다시
 python src_tools/train_site_model.py --base champion --mode test            # 기준 모델로 실제 평가 기간 예측
+python src_tools/make_submission.py outputs/preds_test/E2-finalx2.parquet   # 제출 파일 + 형식 검사 → outputs/submissions/
+python src_tools/train_site_model.py --base champion --cut 2023-06-01       # 다른 해(2023-24)로 검증
 ```
 
 - 결과는 `outputs/preds/실험번호.parquet`에 저장되고, `outputs/preds/champion.txt`가 가리키는 기준 모델과 바로 비교된다. 설정은 같은 이름의 `.json`에 남는다.
@@ -76,4 +81,5 @@ python src_tools/train_site_model.py --base champion --mode test            # �
 
 - 실험 번호는 `E역할-순번`(예: `E2-01`), 시드 2개 결과는 끝에 `x2`. 한 실험에 바꾸는 것은 하나.
 - 시드만 바꿔도 벌금이 약 0.5% 움직인다. 채택은 `--seeds 2` 결과가 기준 모델보다 벌금 0.5% 이상 낮고 11~15시도 낮을 때.
+- 가상 평가연도로 실험을 여러 번 돌려 고른 변경은 그 해에만 맞을 수 있다. 기준 모델로 올리기 전에 `--cut 2023-06-01`, `--cut 2022-06-01`로 다른 해에서도 좋아지는지 확인한다.
 - 금지: 실측 기상(`observed_*`)을 입력으로 쓰기 · 2024-06 이후 발전량으로 만든 값을 학습에 쓰기 · 가상 평가연도로 조기 종료 · 좌표로 실제 위치 찾기(실격) · 대회 데이터 업로드
