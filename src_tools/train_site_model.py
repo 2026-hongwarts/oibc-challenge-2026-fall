@@ -50,8 +50,28 @@ COMMON = ["elev", "azim", "cosz", "doy_sin", "doy_cos", "hour", "capacity_kw", "
 PARAMS = dict(n_estimators=600, learning_rate=0.06, num_leaves=127, min_child_samples=200,
               subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=-1)
 OBJECTIVE = {"l2": "regression", "l1": "regression_l1"}
-DEFAULTS = dict(rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
+DEFAULTS = dict(model="lgb", rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
                 add=[], drop=[], params={}, seed=0, seeds=1)
+# CatBoost·XGBoost 초기값. --params 로 덮어쓴다(모델마다 이름이 다름)
+CAT_PARAMS = dict(iterations=1000, depth=8, learning_rate=0.1, l2_leaf_reg=3, thread_count=-1,
+                  verbose=0, allow_writing_files=False)
+XGB_PARAMS = dict(n_estimators=800, max_depth=8, learning_rate=0.05, subsample=0.8, colsample_bytree=0.8,
+                  min_child_weight=50, tree_method="hist", n_jobs=-1)
+
+
+def make_model(kind: str, objective: str, override: dict, seed: int):
+    """kind: lgb | cat | xgb. objective: l1 | l2. override: 그 모델의 파라미터 덮어쓰기."""
+    if kind == "lgb":
+        return lgb.LGBMRegressor(**{**PARAMS, **override, "objective": OBJECTIVE[objective], "random_state": seed})
+    if kind == "cat":
+        from catboost import CatBoostRegressor
+        return CatBoostRegressor(**{**CAT_PARAMS, **override, "random_seed": seed,
+                                    "loss_function": "MAE" if objective == "l1" else "RMSE"})
+    if kind == "xgb":
+        from xgboost import XGBRegressor
+        return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed,
+                               "objective": "reg:absoluteerror" if objective == "l1" else "reg:squarederror"})
+    raise ValueError(f"모르는 모델 {kind}")
 
 t0 = time.time()
 log = lambda m: print(f"[{time.time() - t0:5.0f}s] {m}", flush=True)
@@ -135,11 +155,15 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
     if args.base:
         base_name, base_cfg = load_base_config(args.base)
         cfg.update(base_cfg)
-    for k in ["rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds"]:
+    if args.model is not None and args.model != cfg.get("model", "lgb"):
+        cfg["params"] = {}                     # 다른 모델로 바꾸면 이전 모델의 파라미터 덮어쓰기는 버린다
+    for k in ["model", "rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds"]:
         if getattr(args, k) is not None:
             cfg[k] = getattr(args, k)
     if args.params is not None:
         cfg["params"] = {**cfg["params"], **json.loads(args.params)}
+    if args.reset_add:
+        cfg["add"] = []
     cfg["add"] = list(dict.fromkeys(cfg["add"] + (args.add or [])))
     cfg["drop"] = list(dict.fromkeys(cfg.get("drop", []) + (args.drop or [])))
     exp = args.exp or base_name
@@ -161,10 +185,13 @@ def main() -> None:
     ap.add_argument("--years", type=float, default=None, help="컷오프 전 학습 기간(년). 0 이면 전체. 기본 2")
     ap.add_argument("--drop-dead", action=argparse.BooleanOptionalAction, default=None,
                     help="정지 추정일(is_dead)을 학습에서 뺌")
-    ap.add_argument("--weight", choices=["none", "cap", "cap_k"], default=None,
+    ap.add_argument("--weight", choices=["none", "cap", "cap_k", "recent"], default=None,
                     help="표본 가중치: cap = 설비용량, cap_k = 설비용량 × k(11~15시 3). 기본 none")
     ap.add_argument("--objective", choices=list(OBJECTIVE), default=None, help="기본 l2")
+    ap.add_argument("--model", choices=["lgb", "cat", "xgb"], default=None,
+                    help="lgb(기본) | cat(CatBoost) | xgb(XGBoost). 다른 모델로 바꾸면 --params 덮어쓰기는 초기화")
     ap.add_argument("--add", action="append", default=None, metavar="모듈:함수", help="피처 함수")
+    ap.add_argument("--reset-add", action="store_true", help="--base 의 피처 함수 목록을 비우고 --add 로만 채운다")
     ap.add_argument("--drop", action="append", default=None, metavar="변수",
                     help="입력에서 뺄 피처. 예보 변수는 이름만 주면 _r10·_r17 둘 다 뺀다 (예: wa_ground_press)")
     ap.add_argument("--params", default=None, help='LightGBM 파라미터 덮어쓰기 JSON. 예: \'{"num_leaves": 63}\'')
@@ -189,8 +216,9 @@ def main() -> None:
     if cfg["drop_dead"]:
         tr = tr[~tr.is_dead.astype(bool)]
     y = (tr.energy / tr.capacity_kw).clip(0, 1.2).astype("float32")
+    recent = np.where(tr.ts >= tr.ts.max() - pd.DateOffset(months=12), 2.0, 1.0)   # 컷오프 전 12개월 × 2
     w = {"none": None, "cap": tr.capacity_kw.to_numpy(),
-         "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts)}[cfg["weight"]]
+         "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts), "recent": recent}[cfg["weight"]]
     pr = df[~df.is_fit]
     params = {**PARAMS, **cfg["params"], "objective": OBJECTIVE[cfg["objective"]],
               "random_state": cfg["seed"]}
@@ -205,7 +233,7 @@ def main() -> None:
         feature_sets.append(feats)
         X_tr, X_pr = tr[feats].astype("float32"), pr[feats].astype("float32")
         for s in seeds:
-            model = lgb.LGBMRegressor(**{**params, "random_state": s}).fit(X_tr, y, sample_weight=w)
+            model = make_model(cfg["model"], cfg["objective"], cfg["params"], s).fit(X_tr, y, sample_weight=w)
             preds.append(model.predict(X_pr))
             log(f"모델 {len(preds)}/{len(sets) * len(seeds)} 학습 완료 (피처 {len(feats)}개, seed {s})")
     p = np.clip(np.mean(preds, axis=0), 0, None)
