@@ -15,8 +15,11 @@
 │  ├─ train_site_model.py 발전소 단위 LightGBM 학습·예측 (옵션 없이 돌리면 baseline 재현)
 │  ├─ evaluate.py         가상 평가연도(2024-06 ~ 2025-05) 채점기
 │  ├─ make_submission.py  제출 파일(composition.csv, forecast.csv) 만들기 + 형식 검사
-│  ├─ features_weather.py 예보 피처 (add_weather_features = 기준 모델에 들어간 하루 요약 11개)
-│  └─ features_site.py    발전소 피처 (add_site_features = 맑은날 기준값, 후보)
+│  ├─ blend.py            여러 실험의 예측 가중 평균 (앙상블)
+│  ├─ optimize_composition.py  기준 모델 오차로 G1/G2 구성 최적화 (홀짝 달·다른 해로 검증)
+│  ├─ features_ours.py    우리 피처 (add_daily_v1 = 기준 모델의 예보 하루 요약 11개, 검증 후 고정)
+│  ├─ features_v2.py      피처 가설 H1~H3 실험 함수 (모두 기각, 기록용)
+│  └─ features_weather.py, features_site.py  팀원 코드 — 쓰지 않음 (chloe-solo 브랜치는 팀원 결과와 독립)
 ├─ analysis_lab/          실험 노트: src_tools 를 불러다 분석하고 결론을 남기는 노트북
 │  └─ eda_v2.ipynb        EDA. 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
 ├─ docs/                  읽는 문서: 계획서, 대회 설명
