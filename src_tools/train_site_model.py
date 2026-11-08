@@ -51,7 +51,7 @@ PARAMS = dict(n_estimators=600, learning_rate=0.06, num_leaves=127, min_child_sa
               subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=-1)
 OBJECTIVE = {"l2": "regression", "l1": "regression_l1"}
 DEFAULTS = dict(model="lgb", rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
-                add=[], drop=[], params={}, seed=0, seeds=1)
+                add=[], drop=[], params={}, seed=0, seeds=1, target="cf", fit_where=None)
 # CatBoost·XGBoost 초기값. --params 로 덮어쓴다(모델마다 이름이 다름)
 CAT_PARAMS = dict(iterations=1000, depth=8, learning_rate=0.1, l2_leaf_reg=3, thread_count=-1,
                   verbose=0, allow_writing_files=False)
@@ -75,6 +75,12 @@ def make_model(kind: str, objective: str, override: dict, seed: int):
 
 t0 = time.time()
 log = lambda m: print(f"[{time.time() - t0:5.0f}s] {m}", flush=True)
+
+
+def clear_ref(d: pd.DataFrame) -> np.ndarray:
+    """CSI 타깃의 기준: Haurwitz 청천 일사 / 1000 (하한 0.05)."""
+    c = d.cosz.clip(lower=0.01).to_numpy()
+    return np.maximum(1.098 * c * np.exp(-0.057 / c), 0.05).astype("float32")
 
 
 def round_feats(r: int) -> list[str]:
@@ -157,7 +163,7 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
         cfg.update(base_cfg)
     if args.model is not None and args.model != cfg.get("model", "lgb"):
         cfg["params"] = {}                     # 다른 모델로 바꾸면 이전 모델의 파라미터 덮어쓰기는 버린다
-    for k in ["model", "rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds"]:
+    for k in ["model", "rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds", "target", "fit_where"]:
         if getattr(args, k) is not None:
             cfg[k] = getattr(args, k)
     if args.params is not None:
@@ -198,6 +204,11 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None, help="첫 시드. 기본 0")
     ap.add_argument("--seeds", type=int, default=None,
                     help="시드 개수. 2 이상이면 seed, seed+1, … 모델의 예측을 평균 (채택 판단은 2로). 기본 1")
+    ap.add_argument("--target", choices=["cf", "csi"], default=None,
+                    help="cf(기본): 발전율 / csi: 발전율 ÷ 청천 기준(Haurwitz 일사/1000). csi 는 가중치에 기준을 곱해 "
+                         "발전율 단위 오차와 같은 손실이 되게 한다")
+    ap.add_argument("--fit-where", default=None, metavar="조건",
+                    help='이 조건(pandas query)을 만족하는 학습 행만 쓴다. 예측은 전체 행. 예: "wa_cloud_r17 >= 90"')
     args = ap.parse_args()
     exp, cfg, base_name = resolve_config(args)
     if args.cut:
@@ -215,11 +226,19 @@ def main() -> None:
     tr = df[df.is_fit & (df.elev > 0)]
     if cfg["drop_dead"]:
         tr = tr[~tr.is_dead.astype(bool)]
+    if cfg.get("fit_where"):
+        n0 = len(tr)
+        tr = tr.query(cfg["fit_where"])
+        log(f"--fit-where {cfg['fit_where']}: 학습 행 {n0:,} → {len(tr):,}")
     y = (tr.energy / tr.capacity_kw).clip(0, 1.2).astype("float32")
     recent = np.where(tr.ts >= tr.ts.max() - pd.DateOffset(months=12), 2.0, 1.0)   # 컷오프 전 12개월 × 2
     w = {"none": None, "cap": tr.capacity_kw.to_numpy(),
          "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts), "recent": recent}[cfg["weight"]]
     pr = df[~df.is_fit]
+    if cfg.get("target", "cf") == "csi":
+        ref_tr = clear_ref(tr)
+        y = (y / ref_tr).clip(0, 3.0).astype("float32")
+        w = ref_tr if w is None else w * ref_tr
     params = {**PARAMS, **cfg["params"], "objective": OBJECTIVE[cfg["objective"]],
               "random_state": cfg["seed"]}
     log(f"학습 {len(tr):,}행 ({tr.ts.min():%Y-%m-%d} ~ {tr.ts.max():%Y-%m-%d}), 예측 {len(pr):,}행")
@@ -237,6 +256,8 @@ def main() -> None:
             preds.append(model.predict(X_pr))
             log(f"모델 {len(preds)}/{len(sets) * len(seeds)} 학습 완료 (피처 {len(feats)}개, seed {s})")
     p = np.clip(np.mean(preds, axis=0), 0, None)
+    if cfg.get("target", "cf") == "csi":
+        p = np.clip(p * clear_ref(pr), 0, 1.2)
     p = np.where(pr.elev.to_numpy() > 0, p, 0.0) * pr.capacity_kw.to_numpy()
     out = pr[["site_id", "ts"]].reset_index(drop=True).assign(pred_kwh=p)
 

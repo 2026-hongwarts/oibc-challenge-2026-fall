@@ -16,9 +16,12 @@
 │  ├─ evaluate.py         가상 평가연도(2024-06 ~ 2025-05) 채점기
 │  ├─ make_submission.py  제출 파일(composition.csv, forecast.csv) 만들기 + 형식 검사
 │  ├─ blend.py            여러 실험의 예측 가중 평균 (앙상블)
+│  ├─ blend_regime.py     조건(예: 흐림 예보) 구간에서만 두 예측을 섞기
+│  ├─ compare_years.py    세 해(2024-25 / 2023-24 / 2022-23) 비교표와 채택 관문 판정
 │  ├─ optimize_composition.py  기준 모델 오차로 G1/G2 구성 최적화 (홀짝 달·다른 해로 검증)
 │  ├─ features_ours.py    우리 피처 (add_daily_v1 = 기준 모델의 예보 하루 요약 11개, 검증 후 고정)
 │  ├─ features_v2.py      피처 가설 H1~H3 실험 함수 (모두 기각, 기록용)
+│  ├─ features_v3.py      계획서 v4 미시험 항목 X01~X16 실험 함수 (MOS, 물리, 시간·공간 파생 등)
 │  └─ features_weather.py, features_site.py  팀원 코드 — 쓰지 않음 (chloe-solo 브랜치는 팀원 결과와 독립)
 ├─ analysis_lab/          실험 노트: src_tools 를 불러다 분석하고 결론을 남기는 노트북
 │  └─ eda_v2.ipynb        EDA. 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
@@ -77,7 +80,8 @@ python src_tools/train_site_model.py --base champion --cut 2023-06-01       # �
 ```
 
 - 결과는 `outputs/preds/실험번호.parquet`에 저장되고, `outputs/preds/champion.txt`가 가리키는 기준 모델과 바로 비교된다. 설정은 같은 이름의 `.json`에 남는다.
-- 옵션: `--drop-dead` 정지일 제외 · `--rounds both|10|17|avg` · `--years N` 학습 기간 · `--weight cap|cap_k` · `--objective l1|l2` · `--params '{"num_leaves": 63}'` · `--seeds N` · `--mode test` 실제 평가 기간 예측
+- 옵션: `--drop-dead` 정지일 제외 · `--rounds both|10|17|avg` · `--years N` 학습 기간 · `--weight cap|cap_k` · `--objective l1|l2` · `--params '{"num_leaves": 63}'` · `--seeds N` · `--mode test` 실제 평가 기간 예측 · `--target csi` 맑은날 대비 비율을 맞힘 · `--fit-where "wa_cloud_r17 >= 90"` 조건 행만으로 학습
+- 세 해 비교: `python src_tools/compare_years.py E7-00x2 실험1 실험2 …` (첫 이름이 기준, 세 해 모두 낮으면 "통과")
 - 피처 함수는 `src_tools/features_*.py`에 만든다. 규칙은 [src_tools/train_site_model.py](src_tools/train_site_model.py) 맨 위 설명에 있다. 발전량으로 만드는 값은 `df[df.is_fit]`에서만 계산한다(예측 행의 실적은 스크립트가 미리 지워서 넘긴다).
 
 ## 규칙
@@ -85,4 +89,4 @@ python src_tools/train_site_model.py --base champion --cut 2023-06-01       # �
 - 실험 번호는 `E역할-순번`(예: `E2-01`), 시드 2개 결과는 끝에 `x2`. 한 실험에 바꾸는 것은 하나.
 - 시드만 바꿔도 벌금이 약 0.5% 움직인다. 채택은 `--seeds 2` 결과가 기준 모델보다 벌금 0.5% 이상 낮고 11~15시도 낮을 때.
 - 가상 평가연도로 실험을 여러 번 돌려 고른 변경은 그 해에만 맞을 수 있다. 기준 모델로 올리기 전에 `--cut 2023-06-01`, `--cut 2022-06-01`로 다른 해에서도 좋아지는지 확인한다.
-- 금지: 실측 기상(`observed_*`)을 입력으로 쓰기 · 2024-06 이후 발전량으로 만든 값을 학습에 쓰기 · 가상 평가연도로 조기 종료 · 좌표로 실제 위치 찾기(실격) · 대회 데이터 업로드
+- 금지: 실측 기상(`observed_*`)을 그 시각의 입력으로 쓰기(평가 기간엔 실측이 없음. 컷오프 전 실측으로 예보 치우침 통계를 만드는 MOS는 허용) · 2024-06 이후 발전량으로 만든 값을 학습에 쓰기 · 가상 평가연도로 조기 종료 · 좌표로 실제 위치 찾기(실격) · 대회 데이터 업로드
