@@ -4,6 +4,8 @@
 
 1. 한반도 남부 고정 상자 북위 33 ~ 39°, 동경 124 ~ 131° (0.5° 격자 13 × 15 = 195칸)만 꺼낸다.
    상자와 지역 경계는 발전소 위치·용량과 무관하게 위경도 1° 눈금으로 미리 정했다(규정 §7).
+0. 공개 시각이 대상일 전날 17:00 KST 보다 늦은 파일(manifest.csv)은 쓰지 않는다 → 그 블록은 빈칸(규정 §6).
+   2021-06 ~ 2026-05 중 16개 파일(2021-06-14 실행 일부, 2022-11-30 실행 전체, 모두 학습 기간).
 2. GFS 의 일사량·운량은 6시간마다 다시 시작하는 '구간 평균'이다.
    f021 = 18 ~ 21시 평균, f024 = 18 ~ 24시 평균 → 21 ~ 24시 평균 = 2 × f024 − f021. (24 ~ 30, 30 ~ 36 도 같은 방식)
    → 3시간 블록 6개: UTC 실행일 R 기준 예보 18 ~ 21, 21 ~ 24, 24 ~ 27, 27 ~ 30, 30 ~ 33, 33 ~ 36시
@@ -35,9 +37,21 @@ def read(path: Path):
     return np.asarray(v, dtype="float64"), la, lo, g.stepRange
 
 
+def late_files() -> set[tuple[str, int, str]]:
+    """저장소 공개 시각(manifest 의 LastModified)이 마감 = 실행일 08:00 UTC(= 대상일 전날 17:00 KST) 보다 늦은 파일.
+    규정 §6: 저장소에 올라온 시각이 전날 17:00 보다 늦으면 그날 입력으로 쓸 수 없다 → 쓰지 않는다(그 블록은 빈칸)."""
+    m = pd.read_csv(RAW / "manifest.csv", dtype={"run_date": str})
+    lm = pd.to_datetime(m.last_modified_utc, utc=True)
+    deadline = pd.to_datetime(m.run_date, format="%Y%m%d").dt.tz_localize("UTC") + pd.Timedelta(hours=8)
+    late = m[lm > deadline]
+    return {(r.run_date, int(r.fhour), r.var) for r in late.itertuples()}
+
+
 def main() -> None:
     files = sorted(RAW.glob("*/*.grb2"))
     pat = re.compile(r"(\d{8})_f(\d{3})_(DSWRF|TCDC)\.grb2")
+    late = late_files()
+    print(f"마감 뒤 공개되어 쓰지 않는 파일 {len(late)}개: {sorted({d for d, _, _ in late})}")
     store: dict[tuple[str, str], dict[int, np.ndarray]] = {}
     la = lo = None
     bad = 0
@@ -46,6 +60,8 @@ def main() -> None:
         if not m:
             continue
         day, fh, var = m.group(1), int(m.group(2)), m.group(3)
+        if (day, fh, var) in late:
+            continue
         try:
             v, la, lo, step = read(p)
         except Exception:
