@@ -22,12 +22,21 @@ CUTS = [None, "2023-06-01", "2022-06-01"]
 LOG = ROOT / "outputs" / "work" / "xbatch"
 LOG.mkdir(parents=True, exist_ok=True)
 V4 = "features_v4:"
+X03 = ["--add", "features_v3:add_hour_neighbors"]
 EXPS: list[tuple[str, list[str]]] = [
-    ("N1x2", ["--seed", "2"]),
+    ("N1x2", ["--seed", "2"]),                                  # 시드 잡음 (기준과 설정 같음)
     ("N2x2", ["--seed", "4"]),
+    ("X03s2x2", X03 + ["--seed", "2"]),                         # X03 재현 (다른 시드)
+    ("X14s2x2", ["--target", "csi", "--seed", "2"]),            # X14 재현 (다른 시드)
+    ("X03bx2", ["--add", V4 + "add_hour_wide"]),                # X03 넓힘 (±2시간, B 운량·습도)
+    ("X20x2", X03 + ["--target", "csi"]),                       # X03 + CSI
     ("X17x2", ["--add", V4 + "add_calendar"]),
     ("X19x2", ["--add", V4 + "add_snow_persist"]),
     ("X18x2", ["--add", V4 + "add_days_since_rain"]),
+    ("X03catx2", X03 + ["--model", "cat"]),                     # 비교 기준: E4-11x2 (같은 피처 값의 CatBoost)
+    ("X03xgbx2", X03 + ["--model", "xgb"]),                     # 비교 기준: E4-12x2
+    ("X20catx2", X03 + ["--model", "cat", "--target", "csi"]),
+    ("X20xgbx2", X03 + ["--model", "xgb", "--target", "csi"]),
 ]
 t0 = time.time()
 
