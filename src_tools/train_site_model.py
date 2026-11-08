@@ -171,6 +171,8 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
     if args.reset_add:
         cfg["add"] = []
     cfg["add"] = list(dict.fromkeys(cfg["add"] + (args.add or [])))
+    if args.reset_drop:
+        cfg["drop"] = []
     cfg["drop"] = list(dict.fromkeys(cfg.get("drop", []) + (args.drop or [])))
     exp = args.exp or base_name
     if not exp:
@@ -200,6 +202,7 @@ def main() -> None:
     ap.add_argument("--reset-add", action="store_true", help="--base 의 피처 함수 목록을 비우고 --add 로만 채운다")
     ap.add_argument("--drop", action="append", default=None, metavar="변수",
                     help="입력에서 뺄 피처. 예보 변수는 이름만 주면 _r10·_r17 둘 다 뺀다 (예: wa_ground_press)")
+    ap.add_argument("--reset-drop", action="store_true", help="--base 의 뺄 피처 목록을 비우고 --drop 으로만 채운다")
     ap.add_argument("--params", default=None, help='LightGBM 파라미터 덮어쓰기 JSON. 예: \'{"num_leaves": 63}\'')
     ap.add_argument("--seed", type=int, default=None, help="첫 시드. 기본 0")
     ap.add_argument("--seeds", type=int, default=None,
