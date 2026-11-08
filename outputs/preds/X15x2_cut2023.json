@@ -1,0 +1,13 @@
+{
+ "exp": "X15x2_cut2023",
+ "regime_blend": {
+  "base": "E7-00x2",
+  "spec": "X15sx2",
+  "where": "wa_cloud_r17 >= 90",
+  "w": 0.5
+ },
+ "mode": "valid",
+ "cut": "2023-06-01",
+ "share_rows": 0.4206176214293388,
+ "created": "2026-11-08T11:57:54"
+}
