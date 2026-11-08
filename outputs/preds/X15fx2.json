@@ -1,0 +1,13 @@
+{
+ "exp": "X15fx2",
+ "regime_blend": {
+  "base": "E7-00x2",
+  "spec": "X15sx2",
+  "where": "wa_cloud_r17 >= 90",
+  "w": 1.0
+ },
+ "mode": "valid",
+ "cut": null,
+ "share_rows": 0.3785395585183206,
+ "created": "2026-11-08T11:58:06"
+}
