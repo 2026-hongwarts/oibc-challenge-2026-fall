@@ -69,6 +69,30 @@ def add_ceiling(df):
     return df
 
 
+def add_wind_vec(df):
+    """V08 (참고: 동서발전 태양광 6위 코드): 풍향은 0° = 360° 인 원형 값 → sin·cos, 8방위 구간(0 ~ 7),
+    바람 벡터(풍속 × sin·cos). 17시 발행분 A·B."""
+    for p, d, s in [("a", "wa_wind_dir_r17", "wa_wind_speed_r17"), ("b", "wb_wind_dir_r17", "wb_wind_speed_r17")]:
+        rad = np.deg2rad(df[d].to_numpy(dtype=float))
+        df[f"wx_wdir_sin_{p}"] = np.sin(rad)
+        df[f"wx_wdir_cos_{p}"] = np.cos(rad)
+        df[f"wx_wdir_sector_{p}"] = ((df[d].to_numpy(dtype=float) + 22.5) // 45) % 8
+        df[f"wx_wind_u_{p}"] = df[s].to_numpy(dtype=float) * np.sin(rad)
+        df[f"wx_wind_v_{p}"] = df[s].to_numpy(dtype=float) * np.cos(rad)
+    return df
+
+
+def add_temp_anom(df):
+    """V09 (참고: 동서발전 태양광 6위 코드): 기온 − (그 달·그 시각의 학습 기간 평균 기온).
+    같은 기온이라도 계절·시각 대비 높으면 맑음 신호. 평균은 학습 행(is_fit)으로만 계산(평가 기간 통계 금지)."""
+    fit = df.is_fit.to_numpy()
+    for p, c in [("a", "wa_temp_r17"), ("b", "wb_temp_r17")]:
+        clim = df.loc[fit].groupby(["month", "hour"])[c].mean().rename("_clim")
+        m = df[["month", "hour"]].merge(clim, left_on=["month", "hour"], right_index=True, how="left")
+        df[f"wx_tanom_{p}"] = df[c].to_numpy() - m._clim.to_numpy()
+    return df
+
+
 def add_calendar(df):
     days = df.date.to_numpy().astype("datetime64[D]")
     dow = df.date.dt.dayofweek

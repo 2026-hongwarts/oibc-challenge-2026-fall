@@ -41,6 +41,29 @@ SETS: dict[str, list[tuple[str, list[str]]]] = {
         ("V06x2", sum([["--drop", d] for d in V06], [])),
         ("V07x2", sum([["--drop", d] for d in V05 + V06], [])),
     ],
+    # 참고 코드(동서발전 태양광 6위)에서 온 변형
+    "v3": [
+        ("V08x2", ["--add", "features_v4:add_wind_vec"]),          # 풍향 sin·cos, 8방위, 바람 벡터
+        ("V09x2", ["--add", "features_v4:add_temp_anom"]),         # 기온 편차 (학습 기간 월×시각 평균 대비)
+    ],
+    # GFS 외부 예보 (일사량은 지역 중심의 태양 위치로 시각별 배분)
+    "gfs": [
+        ("G1x2", ["--add", "features_gfs:add_gfs_kr"]),            # 상자 전체 평균 2개
+        ("G2x2", ["--add", "features_gfs:add_gfs_regions"]),       # 1° 지역 42곳 + 전체 평균 86개
+    ],
+    # 참고 코드(건물 전력 6위)의 2단계: 실측 B 자외선지수·A·B 운량을 예보로 먼저 예측한 값을 피처로
+    "aux": [
+        ("A1x2", ["--add", "features_v5:add_aux_obs"]),
+    ],
+    # 참고 코드(Doge)의 시간대 전용 모델: 10 ~ 16시 행으로만 학습 (11 ~ 15시에 섞는 것은 blend_regime 로)
+    "seg": [
+        ("T1sx2", ["--fit-where", "hour >= 10 and hour <= 16"]),
+    ],
+    # 통과한 것의 재현: 기준과 후보를 같은 다른 시드(2·3)로
+    "repro": [
+        ("E9-00s2x2", ["--seed", "2"]),
+        ("V04s2x2", ["--add", "features_v4:add_ceiling", "--seed", "2"]),
+    ],
 }
 t0 = time.time()
 
