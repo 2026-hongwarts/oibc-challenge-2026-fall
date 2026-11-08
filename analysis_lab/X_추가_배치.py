@@ -38,6 +38,17 @@ EXPS: list[tuple[str, list[str]]] = [
     ("X20catx2", X03 + ["--model", "cat", "--target", "csi"]),
     ("X20xgbx2", X03 + ["--model", "xgb", "--target", "csi"]),
 ]
+CSI = ["--target", "csi"]
+X06 = ["--add", "features_v3:add_day_humid_wind"]
+SNOW = ["--add", V4 + "add_snow_persist"]
+COMBO: list[tuple[str, list[str]]] = [                      # 3차: X20(X03 + CSI) 위 조합
+    ("X20s2x2", X03 + CSI + ["--seed", "2"]),               # X20 재현 (다른 시드)
+    ("X21x2", X03 + SNOW + CSI),                            # + 눈 덮임
+    ("X22x2", X03 + X06 + CSI),                             # + 하루 습도·풍속
+    ("X23x2", X03 + X06 + SNOW + CSI),                      # + 둘 다
+]
+if "--set" in sys.argv and sys.argv[sys.argv.index("--set") + 1] == "combo":
+    EXPS = COMBO
 t0 = time.time()
 
 

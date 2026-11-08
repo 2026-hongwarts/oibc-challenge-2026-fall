@@ -1,0 +1,10 @@
+{
+ "exp": "E8-01x2",
+ "blend": {
+  "X03catx2": 0.5,
+  "X03xgbx2": 0.5
+ },
+ "mode": "valid",
+ "cut": null,
+ "created": "2026-11-08T13:47:25"
+}
