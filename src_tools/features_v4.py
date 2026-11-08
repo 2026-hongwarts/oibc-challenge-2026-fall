@@ -38,6 +38,29 @@ HOLIDAYS = np.array([
 ], dtype="datetime64[D]")
 
 
+def _offset_vals(df: pd.DataFrame, col: str, hours: int) -> np.ndarray:
+    """같은 발전소의 hours 시간 뒤(음수면 앞) 값. 다음 대상일에 속하는 시각(전날 17시 이후 발행 예보)은 NaN."""
+    q = df[["site_id", "ts"]].copy()
+    q["ts"] = q.ts + pd.Timedelta(hours=hours)
+    look = df[["site_id", "ts", "date", col]].drop_duplicates(["site_id", "ts"]).rename(columns={"date": "_d", col: "_v"})
+    m = q.merge(look, on=["site_id", "ts"], how="left")
+    v = m._v.to_numpy(dtype=float)
+    if hours > 0:
+        v = np.where((m._d > df.date.reset_index(drop=True)).to_numpy(), np.nan, v)
+    return v
+
+
+def add_hour_wide(df):
+    """X03b: X03(A 운량·습도의 ±1시간, 3시간 평균)을 넓힘 — ±2시간·5시간 평균, B 운량·습도까지."""
+    for v in ["wa_cloud_r17", "wb_cloud_r17", "wa_humidity_r17", "wb_rel_hum_r17"]:
+        o = {k: _offset_vals(df, v, k) for k in (-2, -1, 1, 2)}
+        cur = df[v].to_numpy(dtype=float)
+        df[f"wx_{v}_prev1"], df[f"wx_{v}_next1"] = o[-1], o[1]
+        df[f"wx_{v}_avg3"] = np.nanmean(np.vstack([o[-1], cur, o[1]]), axis=0)
+        df[f"wx_{v}_avg5"] = np.nanmean(np.vstack([o[-2], o[-1], cur, o[1], o[2]]), axis=0)
+    return df
+
+
 def add_calendar(df):
     days = df.date.to_numpy().astype("datetime64[D]")
     dow = df.date.dt.dayofweek
