@@ -30,7 +30,7 @@ BLOCKS = [(18, 21, None), (21, 24, 21), (24, 27, None), (27, 30, 27), (30, 33, N
 
 
 def read(path: Path):
-    g = pygrib.open(str(path))[1]
+    g = pygrib.fromstring(path.read_bytes())          # 경로에 한글이 있으면 pygrib.open 이 실패하므로 메모리에서 해석
     v, la, lo = g.data(**BOX)
     return np.asarray(v, dtype="float64"), la, lo, g.stepRange
 
@@ -83,8 +83,11 @@ def main() -> None:
                 ts = (start_utc + pd.Timedelta(hours=k)).tz_localize("UTC").tz_convert("Asia/Seoul")
                 rows.append({"ts": ts, "var": var, **feats})
     long = pd.DataFrame(rows)
-    wide = long[long["var"] == "DSWRF"].drop(columns="var").merge(
-        long[long["var"] == "TCDC"].drop(columns="var"), on="ts", how="outer")
+    parts = []
+    for v in ("DSWRF", "TCDC"):
+        cols = ["ts"] + [c for c in long.columns if c.startswith(f"gfs_{v.lower()}_")]
+        parts.append(long.loc[long["var"] == v, cols])
+    wide = parts[0].merge(parts[1], on="ts", how="outer")
     wide = wide.sort_values("ts").reset_index(drop=True)
     wide["ts"] = wide.ts.dt.as_unit("ns")
     wide.to_parquet(OUT, index=False)
