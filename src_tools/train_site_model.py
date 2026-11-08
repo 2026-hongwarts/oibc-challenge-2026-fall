@@ -51,7 +51,7 @@ PARAMS = dict(n_estimators=600, learning_rate=0.06, num_leaves=127, min_child_sa
               subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=-1)
 OBJECTIVE = {"l2": "regression", "l1": "regression_l1"}
 DEFAULTS = dict(model="lgb", rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
-                add=[], drop=[], params={}, seed=0, seeds=1, target="cf", fit_where=None)
+                add=[], drop=[], params={}, seed=0, seeds=1, target="cf", fit_where=None, cat=[])
 # CatBoost·XGBoost 초기값. --params 로 덮어쓴다(모델마다 이름이 다름)
 CAT_PARAMS = dict(iterations=1000, depth=8, learning_rate=0.1, l2_leaf_reg=3, thread_count=-1,
                   verbose=0, allow_writing_files=False)
@@ -59,8 +59,28 @@ XGB_PARAMS = dict(n_estimators=800, max_depth=8, learning_rate=0.05, subsample=0
                   min_child_weight=50, tree_method="hist", n_jobs=-1)
 
 
-def make_model(kind: str, objective: str, override: dict, seed: int):
-    """kind: lgb | cat | xgb. objective: l1 | l2. override: 그 모델의 파라미터 덮어쓰기."""
+def cat_levels(col: str) -> list:
+    """범주형 컬럼의 범주 목록을 데이터와 무관하게 고정한다(학습·예측의 범주 번호가 같도록)."""
+    if col == "hour":
+        return list(range(24))
+    sites = pd.read_csv(ROOT / "01_participant_dataset" / "sites.csv")
+    if col in ("site_id", "wa_station", "wb_station"):
+        return sorted(sites[col].astype(str).unique())
+    raise ValueError(f"--cat {col}: 범주 목록이 정해지지 않은 컬럼")
+
+
+def to_X(d: pd.DataFrame, feats: list[str], cats: list[str]) -> pd.DataFrame:
+    """숫자 피처는 float32, --cat 컬럼은 고정 범주의 pandas category 로."""
+    X = d[[c for c in feats if c not in cats]].astype("float32")
+    for c in cats:
+        v = d[c].astype(str) if c != "hour" else d[c].astype(int)
+        X[c] = pd.Categorical(v, categories=cat_levels(c))
+    return X[feats]
+
+
+def make_model(kind: str, objective: str, override: dict, seed: int, has_cat: bool = False):
+    """kind: lgb | cat | xgb. objective: l1 | l2. override: 그 모델의 파라미터 덮어쓰기.
+    has_cat: 범주형 입력이 있으면 XGBoost 는 enable_categorical 을 켠다(LightGBM 은 category dtype 을 자동 인식)."""
     if kind == "lgb":
         return lgb.LGBMRegressor(**{**PARAMS, **override, "objective": OBJECTIVE[objective], "random_state": seed})
     if kind == "cat":
@@ -69,7 +89,7 @@ def make_model(kind: str, objective: str, override: dict, seed: int):
                                     "loss_function": "MAE" if objective == "l1" else "RMSE"})
     if kind == "xgb":
         from xgboost import XGBRegressor
-        return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed,
+        return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed, "enable_categorical": has_cat,
                                "objective": "reg:absoluteerror" if objective == "l1" else "reg:squarederror"})
     raise ValueError(f"모르는 모델 {kind}")
 
@@ -171,6 +191,7 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
     if args.reset_add:
         cfg["add"] = []
     cfg["add"] = list(dict.fromkeys(cfg["add"] + (args.add or [])))
+    cfg["cat"] = list(dict.fromkeys(cfg.get("cat", []) + (args.cat or [])))
     if args.reset_drop:
         cfg["drop"] = []
     cfg["drop"] = list(dict.fromkeys(cfg.get("drop", []) + (args.drop or [])))
@@ -203,6 +224,9 @@ def main() -> None:
     ap.add_argument("--drop", action="append", default=None, metavar="변수",
                     help="입력에서 뺄 피처. 예보 변수는 이름만 주면 _r10·_r17 둘 다 뺀다 (예: wa_ground_press)")
     ap.add_argument("--reset-drop", action="store_true", help="--base 의 뺄 피처 목록을 비우고 --drop 으로만 채운다")
+    ap.add_argument("--cat", action="append", default=None, metavar="컬럼",
+                    help="범주형으로 쓸 컬럼 (hour, site_id, wa_station, wb_station). 피처에 없으면 추가한다. "
+                         "LightGBM 은 범주형 분할, XGBoost 는 enable_categorical")
     ap.add_argument("--params", default=None, help='LightGBM 파라미터 덮어쓰기 JSON. 예: \'{"num_leaves": 63}\'')
     ap.add_argument("--seed", type=int, default=None, help="첫 시드. 기본 0")
     ap.add_argument("--seeds", type=int, default=None,
@@ -252,10 +276,13 @@ def main() -> None:
     for cols in sets:
         feats = [c for c in cols + COMMON + added
                  if not any(c == d or c in (f"{d}_r10", f"{d}_r17") for d in cfg["drop"])]
+        cats = cfg.get("cat", [])
+        feats += [c for c in cats if c not in feats]          # 범주형으로 쓸 컬럼이 피처에 없으면 추가 (발전소·지점 ID)
         feature_sets.append(feats)
-        X_tr, X_pr = tr[feats].astype("float32"), pr[feats].astype("float32")
+        X_tr, X_pr = to_X(tr, feats, cats), to_X(pr, feats, cats)
         for s in seeds:
-            model = make_model(cfg["model"], cfg["objective"], cfg["params"], s).fit(X_tr, y, sample_weight=w)
+            model = make_model(cfg["model"], cfg["objective"], cfg["params"], s, has_cat=bool(cats)).fit(
+                X_tr, y, sample_weight=w)
             preds.append(model.predict(X_pr))
             log(f"모델 {len(preds)}/{len(sets) * len(seeds)} 학습 완료 (피처 {len(feats)}개, seed {s})")
     p = np.clip(np.mean(preds, axis=0), 0, None)

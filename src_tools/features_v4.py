@@ -61,6 +61,14 @@ def add_hour_wide(df):
     return df
 
 
+def add_ceiling(df):
+    """V04: B 운고(구름 바닥 높이) 두 발행분을 원값 그대로. EDA 에서 핵심 변수로 꼽았지만 baseline 선택에 없던 변수.
+    X01 에서는 다른 원변수 8개와 묶어 넣어 기각 → 단독 효과 확인."""
+    df["wx_raw_wb_ceiling_r10"] = df.wb_ceiling_r10
+    df["wx_raw_wb_ceiling_r17"] = df.wb_ceiling_r17
+    return df
+
+
 def add_calendar(df):
     days = df.date.to_numpy().astype("datetime64[D]")
     dow = df.date.dt.dayofweek
