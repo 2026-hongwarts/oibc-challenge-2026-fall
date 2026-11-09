@@ -34,8 +34,13 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs" / "work" / "gfs_raw"
 BUCKET = "https://noaa-gfs-bdp-pds.s3.amazonaws.com"
 FHOURS = [21, 24, 27, 30, 33, 36]
-VARS = {"DSWRF": re.compile(r":DSWRF:surface:\d+-\d+ hour ave fcst:"),
-        "TCDC": re.compile(r":TCDC:entire atmosphere:\d+-\d+ hour ave fcst:")}
+RES = "0p50"
+ALL_VARS = {"DSWRF": re.compile(r":DSWRF:surface:\d+-\d+ hour ave fcst:"),
+            "TCDC": re.compile(r":TCDC:entire atmosphere:\d+-\d+ hour ave fcst:"),
+            "LCDC": re.compile(r":LCDC:low cloud layer:\d+-\d+ hour ave fcst:"),
+            "MCDC": re.compile(r":MCDC:middle cloud layer:\d+-\d+ hour ave fcst:"),
+            "HCDC": re.compile(r":HCDC:high cloud layer:\d+-\d+ hour ave fcst:")}
+VARS = {k: ALL_VARS[k] for k in ("DSWRF", "TCDC")}
 
 
 def get(url: str, rng: tuple[int, int] | None = None, tries: int = 5) -> bytes:
@@ -54,15 +59,15 @@ def get(url: str, rng: tuple[int, int] | None = None, tries: int = 5) -> bytes:
 
 
 def list_cycle(day: str) -> dict[str, str]:
-    """그날 00시 실행의 0p50 파일 LastModified."""
-    x = get(f"{BUCKET}/?list-type=2&prefix=gfs.{day}/00/atmos/gfs.t00z.pgrb2.0p50.f0&max-keys=1000").decode()
+    """그날 00시 실행의 파일 LastModified."""
+    x = get(f"{BUCKET}/?list-type=2&prefix=gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f0&max-keys=1000").decode()
     keys = re.findall(r"<Key>([^<]+)</Key>", x)
     mods = re.findall(r"<LastModified>([^<]+)</LastModified>", x)
     return dict(zip(keys, mods))
 
 
 def fetch_one(day: str, fh: int, mods: dict[str, str]) -> list[list]:
-    key = f"gfs.{day}/00/atmos/gfs.t00z.pgrb2.0p50.f{fh:03d}"
+    key = f"gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f{fh:03d}"
     rows = []
     need = [v for v in VARS if not (OUT / day[:4] / f"{day}_f{fh:03d}_{v}.grb2").exists()]
     if not need:
@@ -85,7 +90,14 @@ def main() -> None:
     ap.add_argument("--start", default="2021-06-01", help="첫 실행 날짜(UTC) = 첫 대상일 - 1일")
     ap.add_argument("--end", default="2026-05-30", help="마지막 실행 날짜(UTC) = 마지막 대상일 - 1일")
     ap.add_argument("--workers", type=int, default=24)
+    ap.add_argument("--res", default="0p50", choices=["0p50", "1p00"], help="해상도 (1p00 은 outputs/work/gfs_raw_1p00 에)")
+    ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"], choices=list(ALL_VARS))
     args = ap.parse_args()
+    global OUT, RES, VARS
+    RES = args.res
+    VARS = {k: ALL_VARS[k] for k in args.vars}
+    if RES != "0p50":
+        OUT = ROOT / "outputs" / "work" / f"gfs_raw_{RES}"
     d0, d1 = date.fromisoformat(args.start), date.fromisoformat(args.end)
     days = [(d0 + timedelta(n)).strftime("%Y%m%d") for n in range((d1 - d0).days + 1)]
     OUT.mkdir(parents=True, exist_ok=True)
