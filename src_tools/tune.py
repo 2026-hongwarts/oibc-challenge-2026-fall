@@ -115,6 +115,9 @@ def main() -> None:
     base = trial(cfg["params"])
     log(f"기본 설정 벌금 {[f'{v:,.0f}' for v in base]}")
     rows = [dict(trial=0, **{f"pen_{i}": v for i, v in enumerate(base)}, score=1.0, all3=False, params=json.dumps(cfg["params"]))]
+    if out.exists():                                   # 중간에 끊겼던 실행의 결과표를 이어 씀
+        prev = pd.read_csv(out)
+        rows = rows + prev[prev.trial > 0].to_dict("records")
     import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -130,8 +133,14 @@ def main() -> None:
             + f"  평균 {(row['score'] - 1) * 100:+.2f}%" + ("  세 해 모두 개선" if row["all3"] else "") + f"  {p}")
         return row["score"]
 
-    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed))
-    study.optimize(objective, n_trials=args.trials)
+    # 시도마다 SQLite 에 저장 → 컴퓨터가 꺼져도 다시 실행하면 끝난 시도는 이어받고 남은 횟수만 시도
+    storage = f"sqlite:///outputs/work/tune_{name}.db"
+    study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=args.seed),
+                                study_name=name, storage=storage, load_if_exists=True)
+    done = sum(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials)
+    log(f"저장된 완료 시도 {done}개 → 남은 {max(0, args.trials - done)}개 시도")
+    if args.trials > done:
+        study.optimize(objective, n_trials=args.trials - done)
     best = pd.DataFrame(rows).sort_values("score").head(5)
     log("상위 5개:\n" + best[["trial", "score", "all3", "params"]].to_string(index=False))
 
