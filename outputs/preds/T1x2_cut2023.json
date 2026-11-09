@@ -1,0 +1,13 @@
+{
+ "exp": "T1x2_cut2023",
+ "regime_blend": {
+  "base": "E9-00x2",
+  "spec": "T1sx2",
+  "where": "hour >= 11 and hour <= 15",
+  "w": 0.5
+ },
+ "mode": "valid",
+ "cut": "2023-06-01",
+ "share_rows": 0.20835670999805028,
+ "created": "2026-11-09T11:46:23"
+}
