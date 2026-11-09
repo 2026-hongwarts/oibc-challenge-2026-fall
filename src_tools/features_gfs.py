@@ -100,6 +100,21 @@ def add_gfs_cells_pca(df, k: int = 15):
     return _attach(df, out, [c for c in out.columns if c.startswith("gfs_pc_")])
 
 
+def add_gfs_stats(df):
+    """G6 (참고: HEFTCom2024 4위 GEB — 격자를 평균뿐 아니라 최대·최소·분위수로 요약):
+    고정 상자 0.5° 칸 195개의 일사량·운량을 시각마다 최대·최소·25/75% 분위수·표준편차로 (10개). 모든 발전소에 같은 값."""
+    g = _load("gfs_cells.parquet")
+    out = g[["ts"]].copy()
+    for var in ("dswrf", "tcdc"):
+        X = g[[c for c in g.columns if c.startswith(f"gfs_c_{var}_")]].to_numpy(dtype="float64")
+        out[f"gfs_st_{var}_max"] = np.nanmax(X, axis=1)
+        out[f"gfs_st_{var}_min"] = np.nanmin(X, axis=1)
+        out[f"gfs_st_{var}_p25"] = np.nanpercentile(X, 25, axis=1)
+        out[f"gfs_st_{var}_p75"] = np.nanpercentile(X, 75, axis=1)
+        out[f"gfs_st_{var}_std"] = np.nanstd(X, axis=1)
+    return _attach(df, out, [c for c in out.columns if c.startswith("gfs_st_")])
+
+
 def add_gfs_layers_kr(df):
     g = _load("gfs_layers.parquet")
     return _attach(df, g, [c for c in g.columns if c.endswith("_kr")])
