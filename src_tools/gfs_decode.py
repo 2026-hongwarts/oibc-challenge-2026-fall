@@ -37,10 +37,10 @@ def read(path: Path):
     return np.asarray(v, dtype="float64"), la, lo, g.stepRange
 
 
-def late_files() -> set[tuple[str, int, str]]:
+def late_files(raw: Path = RAW) -> set[tuple[str, int, str]]:
     """저장소 공개 시각(manifest 의 LastModified)이 마감 = 실행일 08:00 UTC(= 대상일 전날 17:00 KST) 보다 늦은 파일.
     규정 §6: 저장소에 올라온 시각이 전날 17:00 보다 늦으면 그날 입력으로 쓸 수 없다 → 쓰지 않는다(그 블록은 빈칸)."""
-    m = pd.read_csv(RAW / "manifest.csv", dtype={"run_date": str})
+    m = pd.read_csv(raw / "manifest.csv", dtype={"run_date": str})
     lm = pd.to_datetime(m.last_modified_utc, utc=True)
     deadline = pd.to_datetime(m.run_date, format="%Y%m%d").dt.tz_localize("UTC") + pd.Timedelta(hours=8)
     late = m[lm > deadline]
@@ -48,9 +48,17 @@ def late_files() -> set[tuple[str, int, str]]:
 
 
 def main() -> None:
-    files = sorted(RAW.glob("*/*.grb2"))
-    pat = re.compile(r"(\d{8})_f(\d{3})_(DSWRF|TCDC)\.grb2")
-    late = late_files()
+    import argparse
+    ap = argparse.ArgumentParser(description="GFS 원본 → 시각별 고정 지역 피처")
+    ap.add_argument("--raw", default=str(RAW), help="원본 메시지 폴더 (gfs_fetch.py 출력)")
+    ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"])
+    ap.add_argument("--out", default=str(OUT), help="1° 지역 + 전체 평균 피처 표")
+    ap.add_argument("--cells-out", default=None, help="상자 안 격자 칸 값을 그대로 담은 표 (주성분 분석용)")
+    args = ap.parse_args()
+    raw, out = Path(args.raw), Path(args.out)
+    files = sorted(raw.glob("*/*.grb2"))
+    pat = re.compile(r"(\d{8})_f(\d{3})_(" + "|".join(args.vars) + r")\.grb2")
+    late = late_files(raw)
     print(f"마감 뒤 공개되어 쓰지 않는 파일 {len(late)}개: {sorted({d for d, _, _ in late})}")
     store: dict[tuple[str, str], dict[int, np.ndarray]] = {}
     la = lo = None
@@ -81,33 +89,45 @@ def main() -> None:
     masks = {r: (rlat == r[0]) & (rlon == r[1]) for r in regions}
     print(f"상자 격자 {la.shape}, 1° 지역 {len(regions)}곳")
 
-    rows = []
+    cell_names = [f"{a:.1f}_{b:.1f}".replace(".", "p") for a, b in zip(la.ravel(), lo.ravel())]
+    rows, cells = {v: [] for v in args.vars}, {v: [] for v in args.vars}
     for (day, var), fhs in store.items():
         R = pd.Timestamp(day)
         for s, e, short in BLOCKS:
             if e not in fhs or (short is not None and short not in fhs):
                 continue
             blk = fhs[e] if short is None else 2 * fhs[e] - fhs[short]      # 6시간 평균에서 앞 3시간 평균을 빼 뒤 3시간 평균
-            if var == "DSWRF":
-                blk = np.clip(blk, 0, None)
-            else:
-                blk = np.clip(blk, 0, 100)
+            blk = np.clip(blk, 0, None) if var == "DSWRF" else np.clip(blk, 0, 100)
             feats = {f"gfs_{var.lower()}_r{r[0]}_{r[1]}": float(blk[mk].mean()) for r, mk in masks.items()}
             feats[f"gfs_{var.lower()}_kr"] = float(blk.mean())
             start_utc = R + pd.Timedelta(hours=s)
             for k in range(1, 4):                                            # 블록 안 3시간 (ts = 그 1시간의 끝)
                 ts = (start_utc + pd.Timedelta(hours=k)).tz_localize("UTC").tz_convert("Asia/Seoul")
-                rows.append({"ts": ts, "var": var, **feats})
-    long = pd.DataFrame(rows)
-    parts = []
-    for v in ("DSWRF", "TCDC"):
-        cols = ["ts"] + [c for c in long.columns if c.startswith(f"gfs_{v.lower()}_")]
-        parts.append(long.loc[long["var"] == v, cols])
-    wide = parts[0].merge(parts[1], on="ts", how="outer")
-    wide = wide.sort_values("ts").reset_index(drop=True)
-    wide["ts"] = wide.ts.dt.as_unit("ns")
-    wide.to_parquet(OUT, index=False)
-    print(f"저장 {OUT} : {len(wide):,}시각 × {wide.shape[1] - 1}피처, 기간 {wide.ts.min()} ~ {wide.ts.max()}")
+                rows[var].append({"ts": ts, **feats})
+                if args.cells_out:
+                    cells[var].append((ts, blk.ravel().astype("float32")))
+
+    def assemble(parts: list[pd.DataFrame]) -> pd.DataFrame:
+        w = parts[0]
+        for p in parts[1:]:
+            w = w.merge(p, on="ts", how="outer")
+        w = w.sort_values("ts").reset_index(drop=True)
+        w["ts"] = w.ts.dt.as_unit("ns")
+        return w
+
+    wide = assemble([pd.DataFrame(rows[v]) for v in args.vars])
+    wide.to_parquet(out, index=False)
+    print(f"저장 {out} : {len(wide):,}시각 × {wide.shape[1] - 1}피처, 기간 {wide.ts.min()} ~ {wide.ts.max()}")
+    if args.cells_out:
+        parts = []
+        for v in args.vars:
+            ts = [t for t, _ in cells[v]]
+            mat = np.vstack([a for _, a in cells[v]])
+            parts.append(pd.concat([pd.DataFrame({"ts": ts}),
+                                    pd.DataFrame(mat, columns=[f"gfs_c_{v.lower()}_{n}" for n in cell_names])], axis=1))
+        cw = assemble(parts)
+        cw.to_parquet(args.cells_out, index=False)
+        print(f"저장 {args.cells_out} : {len(cw):,}시각 × {cw.shape[1] - 1}칸")
 
 
 if __name__ == "__main__":
