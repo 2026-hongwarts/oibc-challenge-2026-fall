@@ -51,7 +51,7 @@ PARAMS = dict(n_estimators=600, learning_rate=0.06, num_leaves=127, min_child_sa
               subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1, n_jobs=-1)
 OBJECTIVE = {"l2": "regression", "l1": "regression_l1"}
 DEFAULTS = dict(model="lgb", rounds="avg", years=2, drop_dead=False, weight="none", objective="l2",
-                add=[], drop=[], params={}, seed=0, seeds=1, target="cf", fit_where=None, cat=[])
+                add=[], drop=[], params={}, seed=0, seeds=1, target="cf", fit_where=None, cat=[], device="cpu")
 # CatBoost·XGBoost 초기값. --params 로 덮어쓴다(모델마다 이름이 다름)
 CAT_PARAMS = dict(iterations=1000, depth=8, learning_rate=0.1, l2_leaf_reg=3, thread_count=-1,
                   verbose=0, allow_writing_files=False)
@@ -78,9 +78,10 @@ def to_X(d: pd.DataFrame, feats: list[str], cats: list[str]) -> pd.DataFrame:
     return X[feats]
 
 
-def make_model(kind: str, objective: str, override: dict, seed: int, has_cat: bool = False):
+def make_model(kind: str, objective: str, override: dict, seed: int, has_cat: bool = False, device: str = "cpu"):
     """kind: lgb | cat | xgb. objective: l1 | l2. override: 그 모델의 파라미터 덮어쓰기.
-    has_cat: 범주형 입력이 있으면 XGBoost 는 enable_categorical 을 켠다(LightGBM 은 category dtype 을 자동 인식)."""
+    has_cat: 범주형 입력이 있으면 XGBoost 는 enable_categorical 을 켠다(LightGBM 은 category dtype 을 자동 인식).
+    device: XGBoost 만 — "cuda" 면 GPU 로 학습(CPU 와 결과가 소수점 수준으로 다름). LightGBM·CatBoost 는 늘 CPU."""
     if kind == "lgb":
         return lgb.LGBMRegressor(**{**PARAMS, **override, "objective": OBJECTIVE[objective], "random_state": seed})
     if kind == "cat":
@@ -89,7 +90,7 @@ def make_model(kind: str, objective: str, override: dict, seed: int, has_cat: bo
                                     "loss_function": "MAE" if objective == "l1" else "RMSE"})
     if kind == "xgb":
         from xgboost import XGBRegressor
-        return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed, "enable_categorical": has_cat,
+        return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed, "enable_categorical": has_cat, "device": device,
                                "objective": "reg:absoluteerror" if objective == "l1" else "reg:squarederror"})
     raise ValueError(f"모르는 모델 {kind}")
 
@@ -183,7 +184,8 @@ def resolve_config(args: argparse.Namespace) -> tuple[str, dict, str | None]:
         cfg.update(base_cfg)
     if args.model is not None and args.model != cfg.get("model", "lgb"):
         cfg["params"] = {}                     # 다른 모델로 바꾸면 이전 모델의 파라미터 덮어쓰기는 버린다
-    for k in ["model", "rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds", "target", "fit_where"]:
+    for k in ["model", "rounds", "years", "drop_dead", "weight", "objective", "seed", "seeds", "target", "fit_where",
+              "device"]:
         if getattr(args, k) is not None:
             cfg[k] = getattr(args, k)
     if args.params is not None:
@@ -236,6 +238,8 @@ def main() -> None:
                          "발전율 단위 오차와 같은 손실이 되게 한다")
     ap.add_argument("--fit-where", default=None, metavar="조건",
                     help='이 조건(pandas query)을 만족하는 학습 행만 쓴다. 예측은 전체 행. 예: "wa_cloud_r17 >= 90"')
+    ap.add_argument("--device", choices=["cpu", "cuda"], default=None,
+                    help="XGBoost 학습 장치. cuda = GPU (LightGBM 은 무시). 기본 cpu, --base 에서 이어받음")
     args = ap.parse_args()
     exp, cfg, base_name = resolve_config(args)
     if args.cut:
@@ -281,7 +285,8 @@ def main() -> None:
         feature_sets.append(feats)
         X_tr, X_pr = to_X(tr, feats, cats), to_X(pr, feats, cats)
         for s in seeds:
-            model = make_model(cfg["model"], cfg["objective"], cfg["params"], s, has_cat=bool(cats)).fit(
+            model = make_model(cfg["model"], cfg["objective"], cfg["params"], s, has_cat=bool(cats),
+                               device=cfg.get("device", "cpu")).fit(
                 X_tr, y, sample_weight=w)
             preds.append(model.predict(X_pr))
             log(f"모델 {len(preds)}/{len(sets) * len(seeds)} 학습 완료 (피처 {len(feats)}개, seed {s})")
