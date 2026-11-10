@@ -216,8 +216,8 @@ def main() -> None:
     ap.add_argument("--years", type=float, default=None, help="컷오프 전 학습 기간(년). 0 이면 전체. 기본 2")
     ap.add_argument("--drop-dead", action=argparse.BooleanOptionalAction, default=None,
                     help="정지 추정일(is_dead)을 학습에서 뺌")
-    ap.add_argument("--weight", choices=["none", "cap", "cap_k", "recent"], default=None,
-                    help="표본 가중치: cap = 설비용량, cap_k = 설비용량 × k(11~15시 3). 기본 none")
+    ap.add_argument("--weight", choices=["none", "cap", "cap_k", "recent", "smp_k"], default=None,
+                    help="표본 가중치: cap = 설비용량, cap_k = 설비용량 × k(11~15시 3), smp_k = 학습 기간 SMP × k(채점식 가중, 설명회 슬 27). 기본 none")
     ap.add_argument("--objective", choices=list(OBJECTIVE), default=None, help="기본 l2")
     ap.add_argument("--model", choices=["lgb", "cat", "xgb"], default=None,
                     help="lgb(기본) | cat(CatBoost) | xgb(XGBoost). 다른 모델로 바꾸면 --params 덮어쓰기는 초기화")
@@ -263,8 +263,16 @@ def main() -> None:
         log(f"--fit-where {cfg['fit_where']}: 학습 행 {n0:,} → {len(tr):,}")
     y = (tr.energy / tr.capacity_kw).clip(0, 1.2).astype("float32")
     recent = np.where(tr.ts >= tr.ts.max() - pd.DateOffset(months=12), 2.0, 1.0)   # 컷오프 전 12개월 × 2
+    if cfg["weight"] == "smp_k":       # 채점식 가중(SMP × k)을 학습 손실에. 학습 행(과거) 시각의 SMP 만 쓴다(규정 §8: 대상일 SMP 는 안 씀)
+        from oibc_common import load_smp
+        sm = load_smp("train").set_index("ts").w
+        wk = tr.ts.map(sm).to_numpy(dtype="float64")
+        wk = np.where(np.isnan(wk), np.nanmean(wk), wk)
+        w_smp = wk / wk.mean()             # 평균 1 로 맞춤(잎 최소 가중치 등 설정값의 뜻 유지)
+        log(f"--weight smp_k: 학습 기간 SMP×k 가중 (평균 1, 최소 {w_smp.min():.2f}, 최대 {w_smp.max():.2f})")
     w = {"none": None, "cap": tr.capacity_kw.to_numpy(),
-         "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts), "recent": recent}[cfg["weight"]]
+         "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts), "recent": recent,
+         "smp_k": w_smp if cfg["weight"] == "smp_k" else None}[cfg["weight"]]
     pr = df[~df.is_fit]
     del df                                                  # 전체 표는 더 안 씀 → 메모리 반납(결과 같음, 학습 둘 동시 실행용)
     import gc; gc.collect()
