@@ -92,6 +92,9 @@ def make_model(kind: str, objective: str, override: dict, seed: int, has_cat: bo
         from xgboost import XGBRegressor
         return XGBRegressor(**{**XGB_PARAMS, **override, "random_state": seed, "enable_categorical": has_cat, "device": device,
                                "objective": "reg:absoluteerror" if objective == "l1" else "reg:squarederror"})
+    if kind == "mlp":                  # PyTorch MLP 보조 모델(GPU). override = mlp_model.MLP_PARAMS 덮어쓰기
+        from mlp_model import MLPRegressor
+        return MLPRegressor(seed=seed, objective=objective, **override)
     raise ValueError(f"모르는 모델 {kind}")
 
 t0 = time.time()
@@ -219,7 +222,7 @@ def main() -> None:
     ap.add_argument("--weight", choices=["none", "cap", "cap_k", "recent", "smp_k"], default=None,
                     help="표본 가중치: cap = 설비용량, cap_k = 설비용량 × k(11~15시 3), smp_k = 학습 기간 SMP × k(채점식 가중, 설명회 슬 27). 기본 none")
     ap.add_argument("--objective", choices=list(OBJECTIVE), default=None, help="기본 l2")
-    ap.add_argument("--model", choices=["lgb", "cat", "xgb"], default=None,
+    ap.add_argument("--model", choices=["lgb", "cat", "xgb", "mlp"], default=None,
                     help="lgb(기본) | cat(CatBoost) | xgb(XGBoost). 다른 모델로 바꾸면 --params 덮어쓰기는 초기화")
     ap.add_argument("--add", action="append", default=None, metavar="모듈:함수", help="피처 함수")
     ap.add_argument("--reset-add", action="store_true", help="--base 의 피처 함수 목록을 비우고 --add 로만 채운다")
