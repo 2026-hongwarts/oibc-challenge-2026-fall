@@ -10,6 +10,9 @@ GFS 0.5°·1° 자료가 없는 2021-01 ~ 2021-05 와 밤 시각은 빈칸(NaN).
          주성분은 그 실행의 학습 행 마지막 시각까지의 자료로만 구한다(평가 기간 통계 금지, 규정 §6·§7 이 허용한 방식)
     G5a  add_gfs_layers_kr      하층·중층·상층 운량 전체 평균 (3개)                           outputs/work/gfs_layers.parquet (1°)
     G5b  add_gfs_layers_regions 하층·중층·상층 운량 1° 지역 42곳 + 전체 평균 (129개)          〃
+    G7   add_gefs_regions       GEFS 앙상블 평균·표준편차(일사량·운량) 1° 지역 42곳 + 전체 평균 (172개)  outputs/work/gefs_kr.parquet
+    G7k  add_gefs_kr            GEFS 앙상블 평균·표준편차(일사량·운량) 상자 전체 평균 (4개)              〃
+         GEFS = NOAA 전 지구 앙상블(31 멤버), 같은 00시 UTC 실행(13시 KST 경 공개). 표준편차 = 예보의 불확실성.
 """
 from __future__ import annotations
 
@@ -123,3 +126,13 @@ def add_gfs_layers_kr(df):
 def add_gfs_layers_regions(df):
     g = _load("gfs_layers.parquet")
     return _attach(df, g, [c for c in g.columns if c.startswith("gfs_")])
+
+
+def add_gefs_regions(df):
+    g = _load("gefs_kr.parquet")
+    return _attach(df, g, [c for c in g.columns if c.startswith("gefs_")])
+
+
+def add_gefs_kr(df):
+    g = _load("gefs_kr.parquet")
+    return _attach(df, g, [c for c in g.columns if c.startswith("gefs_") and c.endswith("_kr")])

@@ -15,6 +15,9 @@
     파일마다 저장소의 LastModified(공개 시각)를 outputs/work/gfs_raw/manifest.csv 에 남겨 근거로 삼는다.
     06시 UTC 실행(D-1 15:00 KST)은 공개가 17:00 KST 이후라 쓰지 않는다.
 
+GEFS(--source gefs): 같은 NODD 의 noaa-gefs-pds (https://registry.opendata.aws/noaa-gefs/), 00시 UTC 실행,
+    pgrb2ap5/geavg(앙상블 평균)·gespr(앙상블 표준편차) 0.5°. 공개 약 03:55 ~ 04:02 UTC(= D-1 13시 KST) → 마감 전.
+
 받는 것: 예보 시각 f021, f024, f027, f030, f033, f036 (= 대상일 KST 03 ~ 21시를 덮는 3시간 평균 블록)의
     DSWRF:surface(지표 하향 단파 일사, 평균) · TCDC:entire atmosphere(전체 운량, 평균) GRIB2 메시지.
     원본 메시지를 outputs/work/gfs_raw/{YYYY}/{YYYYMMDD}_f{FFF}_{VAR}.grb2 로 저장(전 지구, 해석은 gfs_decode.py).
@@ -41,6 +44,10 @@ ALL_VARS = {"DSWRF": re.compile(r":DSWRF:surface:\d+-\d+ hour ave fcst:"),
             "MCDC": re.compile(r":MCDC:middle cloud layer:\d+-\d+ hour ave fcst:"),
             "HCDC": re.compile(r":HCDC:high cloud layer:\d+-\d+ hour ave fcst:")}
 VARS = {k: ALL_VARS[k] for k in ("DSWRF", "TCDC")}
+# GEFS(NOAA 전 지구 앙상블 예보, 31개 멤버): 앙상블 평균(geavg)·표준편차(gespr) 0.5°. 파일 이름의 변수 끝에 M(평균)/S(표준편차)
+SOURCE = "gfs"
+GEFS_BUCKET = "https://noaa-gefs-pds.s3.amazonaws.com"
+GEFS_PRODS = {"M": "geavg", "S": "gespr"}
 
 
 def get(url: str, rng: tuple[int, int] | None = None, tries: int = 5) -> bytes:
@@ -58,30 +65,46 @@ def get(url: str, rng: tuple[int, int] | None = None, tries: int = 5) -> bytes:
     raise RuntimeError("unreachable")
 
 
+def _list(bucket: str, prefix: str) -> dict[str, str]:
+    x = get(f"{bucket}/?list-type=2&prefix={prefix}&max-keys=1000").decode()
+    return dict(zip(re.findall(r"<Key>([^<]+)</Key>", x), re.findall(r"<LastModified>([^<]+)</LastModified>", x)))
+
+
 def list_cycle(day: str) -> dict[str, str]:
     """그날 00시 실행의 파일 LastModified."""
-    x = get(f"{BUCKET}/?list-type=2&prefix=gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f0&max-keys=1000").decode()
-    keys = re.findall(r"<Key>([^<]+)</Key>", x)
-    mods = re.findall(r"<LastModified>([^<]+)</LastModified>", x)
-    return dict(zip(keys, mods))
+    if SOURCE == "gefs":
+        out = {}
+        for prod in GEFS_PRODS.values():
+            out.update(_list(GEFS_BUCKET, f"gefs.{day}/00/atmos/pgrb2ap5/{prod}.t00z.pgrb2a.0p50.f0"))
+        return out
+    return _list(BUCKET, f"gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f0")
+
+
+def _targets(day: str, fh: int) -> list[tuple[str, str, str]]:
+    """(파일 변수 이름, 저장소 주소, 키) 목록."""
+    if SOURCE == "gefs":
+        return [(v + s, GEFS_BUCKET, f"gefs.{day}/00/atmos/pgrb2ap5/{prod}.t00z.pgrb2a.0p50.f{fh:03d}")
+                for s, prod in GEFS_PRODS.items() for v in VARS]
+    return [(v, BUCKET, f"gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f{fh:03d}") for v in VARS]
 
 
 def fetch_one(day: str, fh: int, mods: dict[str, str]) -> list[list]:
-    key = f"gfs.{day}/00/atmos/gfs.t00z.pgrb2.{RES}.f{fh:03d}"
     rows = []
-    need = [v for v in VARS if not (OUT / day[:4] / f"{day}_f{fh:03d}_{v}.grb2").exists()]
-    if not need:
-        return rows
-    lines = get(f"{BUCKET}/{key}.idx").decode().splitlines()
-    offs = [int(l.split(":")[1]) for l in lines]
-    for v in need:
+    need = [t for t in _targets(day, fh) if not (OUT / day[:4] / f"{day}_f{fh:03d}_{t[0]}.grb2").exists()]
+    idx: dict[str, list[str]] = {}
+    for name, bucket, key in need:
+        if key not in idx:
+            idx[key] = get(f"{bucket}/{key}.idx").decode().splitlines()
+        lines = idx[key]
+        offs = [int(l.split(":")[1]) for l in lines]
+        v = name if SOURCE != "gefs" else name[:-1]
         i = next(j for j, l in enumerate(lines) if VARS[v].search(l))
         end = offs[i + 1] - 1 if i + 1 < len(offs) else None
-        data = get(f"{BUCKET}/{key}", (offs[i], end))
-        p = OUT / day[:4] / f"{day}_f{fh:03d}_{v}.grb2"
+        data = get(f"{bucket}/{key}", (offs[i], end))
+        p = OUT / day[:4] / f"{day}_f{fh:03d}_{name}.grb2"
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(data)
-        rows.append([day, fh, v, f"{BUCKET}/{key}", mods.get(key, ""), lines[i], len(data)])
+        rows.append([day, fh, name, f"{bucket}/{key}", mods.get(key, ""), lines[i], len(data)])
     return rows
 
 
@@ -92,11 +115,16 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--res", default="0p50", choices=["0p50", "1p00"], help="해상도 (1p00 은 outputs/work/gfs_raw_1p00 에)")
     ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"], choices=list(ALL_VARS))
+    ap.add_argument("--source", default="gfs", choices=["gfs", "gefs"],
+                    help="gefs: 앙상블 평균·표준편차 0.5° (outputs/work/gefs_raw 에, 변수 이름 끝 M/S)")
     args = ap.parse_args()
-    global OUT, RES, VARS
+    global OUT, RES, VARS, SOURCE
     RES = args.res
     VARS = {k: ALL_VARS[k] for k in args.vars}
-    if RES != "0p50":
+    SOURCE = args.source
+    if SOURCE == "gefs":
+        OUT = ROOT / "outputs" / "work" / "gefs_raw"
+    elif RES != "0p50":
         OUT = ROOT / "outputs" / "work" / f"gfs_raw_{RES}"
     d0, d1 = date.fromisoformat(args.start), date.fromisoformat(args.end)
     days = [(d0 + timedelta(n)).strftime("%Y%m%d") for n in range((d1 - d0).days + 1)]
