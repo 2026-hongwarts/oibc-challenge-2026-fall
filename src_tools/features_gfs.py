@@ -13,6 +13,13 @@ GFS 0.5°·1° 자료가 없는 2021-01 ~ 2021-05 와 밤 시각은 빈칸(NaN).
     G7   add_gefs_regions       GEFS 앙상블 평균·표준편차(일사량·운량) 1° 지역 42곳 + 전체 평균 (172개)  outputs/work/gefs_kr.parquet
     G7k  add_gefs_kr            GEFS 앙상블 평균·표준편차(일사량·운량) 상자 전체 평균 (4개)              〃
          GEFS = NOAA 전 지구 앙상블(31 멤버), 같은 00시 UTC 실행(13시 KST 경 공개). 표준편차 = 예보의 불확실성.
+    G8d  add_gfs_daily          대상일 GFS 일사량 하루 합·운량 하루 평균, 1° 지역 42곳 + 전체 (86개) + 전체 일사 최대·운량 최소/최대 (3개)
+         참고: AMS 2013-14 1·3위(하루 합). 같은 실행(전날 00시 UTC)의 값만 묶는다(대상일 KST 날짜 = 실행 다음 날).
+    G8n  add_gfs_neighbors      GFS 일사량·운량(시각 배분 뒤)의 3시간 전·뒤 값, 1° 지역 42곳 + 전체 (172개). 같은 대상일 안에서만.
+         참고: HEFTCom2024 1위 SVK·4위 GEB(앞뒤 시각 값), 우리 지역 예보판 X03.
+    G8p  add_gfs_pwat           GFS 가강수량(PWAT, 순간값) 1° 지역 42곳 + 전체 (43개)         outputs/work/gfs_pwat.parquet
+         참고: AMS 2013-14 2위(중요도 2위 변수).
+    G9a  add_aer_regions        GEFS-Aerosols 550nm 광학두께(전체·황사) 1° 지역 42곳 + 전체 (86개)  outputs/work/aer_kr.parquet
 """
 from __future__ import annotations
 
@@ -136,3 +143,44 @@ def add_gefs_regions(df):
 def add_gefs_kr(df):
     g = _load("gefs_kr.parquet")
     return _attach(df, g, [c for c in g.columns if c.startswith("gefs_") and c.endswith("_kr")])
+
+
+def add_gfs_daily(df):
+    g = _gfs()
+    cols = [c for c in g.columns if c.startswith("gfs_")]
+    day = g.ts.dt.normalize()
+    d = day.to_numpy()
+    sums = g[cols].groupby(d).sum(min_count=1)
+    means = g[cols].groupby(d).mean()
+    new = {c.replace("gfs_", "gfs_day_", 1): (sums if "dswrf" in c else means)[c].reindex(d).to_numpy() for c in cols}
+    by = g.groupby(d)
+    new["gfs_day_dswrf_kr_max"] = by.gfs_dswrf_kr.max().reindex(d).to_numpy()
+    new["gfs_day_tcdc_kr_min"] = by.gfs_tcdc_kr.min().reindex(d).to_numpy()
+    new["gfs_day_tcdc_kr_max"] = by.gfs_tcdc_kr.max().reindex(d).to_numpy()
+    out = pd.concat([g[["ts"]].reset_index(drop=True), pd.DataFrame(new)], axis=1)
+    return _attach(df, out, list(new))
+
+
+def add_gfs_neighbors(df):
+    g = _gfs()
+    cols = [c for c in g.columns if c.startswith("gfs_")]
+    t = g.set_index("ts")[cols]
+    new = {}
+    for tag, h in (("p3", 3), ("n3", -3)):
+        sh = t.shift(freq=f"{h}h").reindex(g.ts)                 # ts 에 ts−h 시각의 값
+        other = g.ts - pd.Timedelta(hours=h)
+        same_day = (other.dt.normalize() == g.ts.dt.normalize()).to_numpy()
+        for c in cols:
+            new[c.replace("gfs_", f"gfs_{tag}_", 1)] = np.where(same_day, sh[c].to_numpy(), np.nan)
+    out = pd.concat([g[["ts"]].reset_index(drop=True), pd.DataFrame(new)], axis=1)
+    return _attach(df, out, list(new))
+
+
+def add_gfs_pwat(df):
+    g = _load("gfs_pwat.parquet")
+    return _attach(df, g, [c for c in g.columns if c.startswith("gfs_pwat_")])
+
+
+def add_aer_regions(df):
+    g = _load("aer_kr.parquet")
+    return _attach(df, g, [c for c in g.columns if c.startswith("aer_")])

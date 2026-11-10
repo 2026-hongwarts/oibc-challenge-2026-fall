@@ -15,6 +15,9 @@
     파일마다 저장소의 LastModified(공개 시각)를 outputs/work/gfs_raw/manifest.csv 에 남겨 근거로 삼는다.
     06시 UTC 실행(D-1 15:00 KST)은 공개가 17:00 KST 이후라 쓰지 않는다.
 
+GEFS-Aerosols(--source chem): 같은 noaa-gefs-pds 의 chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25, 00시 UTC 실행, 0.25°.
+    550nm 에어로졸 광학두께(AOD: 전체, DUAOD: 황사) — 순간값. 공개 약 04:20 UTC(= D-1 13:20 KST) → 마감 전.
+    GFS 일사량은 에어로졸을 평년값으로만 넣으므로 황사·연무 정보는 새 정보. 저장 outputs/work/chem_raw.
 GEFS(--source gefs): 같은 NODD 의 noaa-gefs-pds (https://registry.opendata.aws/noaa-gefs/), 00시 UTC 실행,
     pgrb2ap5/geavg(앙상블 평균)·gespr(앙상블 표준편차) 0.5°. 공개 약 03:55 ~ 04:02 UTC(= D-1 13시 KST) → 마감 전.
 
@@ -42,7 +45,12 @@ ALL_VARS = {"DSWRF": re.compile(r":DSWRF:surface:\d+-\d+ hour ave fcst:"),
             "TCDC": re.compile(r":TCDC:entire atmosphere:\d+-\d+ hour ave fcst:"),
             "LCDC": re.compile(r":LCDC:low cloud layer:\d+-\d+ hour ave fcst:"),
             "MCDC": re.compile(r":MCDC:middle cloud layer:\d+-\d+ hour ave fcst:"),
-            "HCDC": re.compile(r":HCDC:high cloud layer:\d+-\d+ hour ave fcst:")}
+            "HCDC": re.compile(r":HCDC:high cloud layer:\d+-\d+ hour ave fcst:"),
+            "PWAT": re.compile(r":PWAT:entire atmosphere \(considered as a single layer\):\d+ hour fcst:"),   # 가강수량, 순간값
+            "AOD": re.compile(r":AOTK:entire atmosphere:\d+ hour fcst:aerosol=Total aerosol:aerosol_size <2e-05:"
+                              r"aerosol_wavelength >=5.45e-07,<=5.65e-07", re.I),
+            "DUAOD": re.compile(r":AOTK:entire atmosphere:\d+ hour fcst:aerosol=Dust dry:aerosol_size <2e-05:"
+                                r"aerosol_wavelength >=5.45e-07,<=5.65e-07", re.I)}
 VARS = {k: ALL_VARS[k] for k in ("DSWRF", "TCDC")}
 # GEFS(NOAA 전 지구 앙상블 예보, 31개 멤버): 앙상블 평균(geavg)·표준편차(gespr) 0.5°. 파일 이름의 변수 끝에 M(평균)/S(표준편차)
 SOURCE = "gfs"
@@ -72,6 +80,8 @@ def _list(bucket: str, prefix: str) -> dict[str, str]:
 
 def list_cycle(day: str) -> dict[str, str]:
     """그날 00시 실행의 파일 LastModified."""
+    if SOURCE == "chem":
+        return _list(GEFS_BUCKET, f"gefs.{day}/00/chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25.f0")
     if SOURCE == "gefs":
         out = {}
         for prod in GEFS_PRODS.values():
@@ -82,6 +92,8 @@ def list_cycle(day: str) -> dict[str, str]:
 
 def _targets(day: str, fh: int) -> list[tuple[str, str, str]]:
     """(파일 변수 이름, 저장소 주소, 키) 목록."""
+    if SOURCE == "chem":
+        return [(v, GEFS_BUCKET, f"gefs.{day}/00/chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25.f{fh:03d}.grib2") for v in VARS]
     if SOURCE == "gefs":
         return [(v + s, GEFS_BUCKET, f"gefs.{day}/00/atmos/pgrb2ap5/{prod}.t00z.pgrb2a.0p50.f{fh:03d}")
                 for s, prod in GEFS_PRODS.items() for v in VARS]
@@ -115,14 +127,16 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--res", default="0p50", choices=["0p50", "1p00"], help="해상도 (1p00 은 outputs/work/gfs_raw_1p00 에)")
     ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"], choices=list(ALL_VARS))
-    ap.add_argument("--source", default="gfs", choices=["gfs", "gefs"],
+    ap.add_argument("--source", default="gfs", choices=["gfs", "gefs", "chem"],
                     help="gefs: 앙상블 평균·표준편차 0.5° (outputs/work/gefs_raw 에, 변수 이름 끝 M/S)")
     args = ap.parse_args()
     global OUT, RES, VARS, SOURCE
     RES = args.res
     VARS = {k: ALL_VARS[k] for k in args.vars}
     SOURCE = args.source
-    if SOURCE == "gefs":
+    if SOURCE == "chem":
+        OUT = ROOT / "outputs" / "work" / "chem_raw"
+    elif SOURCE == "gefs":
         OUT = ROOT / "outputs" / "work" / "gefs_raw"
     elif RES != "0p50":
         OUT = ROOT / "outputs" / "work" / f"gfs_raw_{RES}"
