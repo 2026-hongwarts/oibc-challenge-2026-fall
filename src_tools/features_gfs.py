@@ -19,6 +19,8 @@ GFS 0.5°·1° 자료가 없는 2021-01 ~ 2021-05 와 밤 시각은 빈칸(NaN).
          참고: HEFTCom2024 1위 SVK·4위 GEB(앞뒤 시각 값), 우리 지역 예보판 X03.
     G8p  add_gfs_pwat           GFS 가강수량(PWAT, 순간값) 1° 지역 42곳 + 전체 (43개)         outputs/work/gfs_pwat.parquet
          참고: AMS 2013-14 2위(중요도 2위 변수).
+    S4   add_gfs18_regions      GFS 이전 실행(대상일 이틀 전 18시 UTC, 공개 D-1 06:40 KST 경) 일사량·운량 1° 지역 42곳 + 전체 (86개)
+         outputs/work/gfs18_kr.parquet. 시간차 앙상블(HEFTCom2024 1위 출처 추가) — 출처 전용 모델(S2·S3 처럼)로 쓴다.
     G9a  add_aer_regions        GEFS-Aerosols 550nm 광학두께(전체·황사) 1° 지역 42곳 + 전체 (86개)  outputs/work/aer_kr.parquet
 """
 from __future__ import annotations
@@ -184,3 +186,8 @@ def add_gfs_pwat(df):
 def add_aer_regions(df):
     g = _load("aer_kr.parquet")
     return _attach(df, g, [c for c in g.columns if c.startswith("aer_")])
+
+
+def add_gfs18_regions(df):
+    g = _load("gfs18_kr.parquet")
+    return _attach(df, g, [c for c in g.columns if c.startswith("g18_")])

@@ -62,6 +62,8 @@ def main() -> None:
     ap.add_argument("--cells-out", default=None, help="상자 안 격자 칸 값을 그대로 담은 표 (주성분 분석용)")
     ap.add_argument("--prefix", default="gfs", help="열 이름 앞머리 (GEFS 는 gefs)")
     ap.add_argument("--spread", nargs="*", default=[], help="3시간으로 나누지 않고 구간 값을 그대로 쓸 변수 (앙상블 표준편차)")
+    ap.add_argument("--step-shift", type=int, default=0,
+                    help="GFS 이전 실행(gfs18): 파일의 평균 구간에서 이만큼 빼서 00시 실행 기준으로 맞춘다 (6)")
     ap.add_argument("--inst", nargs="*", default=[], help="순간값 변수 (PWAT, AOD, DUAOD): 블록 끝 시각의 값을 그대로")
     args = ap.parse_args()
     raw, out = Path(args.raw), Path(args.out)
@@ -89,7 +91,7 @@ def main() -> None:
                 raise ValueError(f"{p.name}: 순간값인데 예보 시각 {step}, 기대 {fh}")
             store.setdefault((day, var), {})[fh] = v
             continue
-        a, b = map(int, step.split("-"))
+        a, b = (int(t) - args.step_shift for t in step.split("-"))
         expect = {21: (18, 21), 24: (18, 24), 27: (24, 27), 30: (24, 30), 33: (30, 33), 36: (30, 36)}[fh]
         if (a, b) != expect:
             raise ValueError(f"{p.name}: 평균 구간 {step}, 기대 {expect}")
