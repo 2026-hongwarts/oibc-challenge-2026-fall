@@ -14,6 +14,10 @@
 4. 피처 (모든 발전소에 같은 값):
    gfs_{dswrf|tcdc}_r{위도}_{경도}  1° 지역(그 칸의 0.5° 격자 평균) 42곳
    gfs_{dswrf|tcdc}_kr               상자 전체 평균
+5. GEFS(--prefix gefs, gfs_fetch.py --source gefs): 변수 DSWRFM·TCDCM(앙상블 평균), DSWRFS·TCDCS(앙상블 표준편차).
+   평균은 위 2 와 같이 3시간으로 나눈다. 표준편차는 선형이 아니라 나눌 수 없으므로(--spread 변수)
+   그 시각을 덮는 예보 파일의 구간 값(3시간 또는 6시간 구간)을 그대로 쓴다.
+   → gefs_{dswrfm|dswrfs|tcdcm|tcdcs}_r{위도}_{경도}, gefs_*_kr
 """
 from __future__ import annotations
 
@@ -54,6 +58,8 @@ def main() -> None:
     ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"])
     ap.add_argument("--out", default=str(OUT), help="1° 지역 + 전체 평균 피처 표")
     ap.add_argument("--cells-out", default=None, help="상자 안 격자 칸 값을 그대로 담은 표 (주성분 분석용)")
+    ap.add_argument("--prefix", default="gfs", help="열 이름 앞머리 (GEFS 는 gefs)")
+    ap.add_argument("--spread", nargs="*", default=[], help="3시간으로 나누지 않고 구간 값을 그대로 쓸 변수 (앙상블 표준편차)")
     args = ap.parse_args()
     raw, out = Path(args.raw), Path(args.out)
     files = sorted(raw.glob("*/*.grb2"))
@@ -96,10 +102,14 @@ def main() -> None:
         for s, e, short in BLOCKS:
             if e not in fhs or (short is not None and short not in fhs):
                 continue
-            blk = fhs[e] if short is None else 2 * fhs[e] - fhs[short]      # 6시간 평균에서 앞 3시간 평균을 빼 뒤 3시간 평균
-            blk = np.clip(blk, 0, None) if var == "DSWRF" else np.clip(blk, 0, 100)
-            feats = {f"gfs_{var.lower()}_r{r[0]}_{r[1]}": float(blk[mk].mean()) for r, mk in masks.items()}
-            feats[f"gfs_{var.lower()}_kr"] = float(blk.mean())
+            if short is None or var in args.spread:
+                blk = fhs[e]                                                 # 3시간 평균 그대로, 또는 표준편차는 구간 값 그대로
+            else:
+                blk = 2 * fhs[e] - fhs[short]                                # 6시간 평균에서 앞 3시간 평균을 빼 뒤 3시간 평균
+            blk = np.clip(blk, 0, None) if var.startswith("DSWRF") else np.clip(blk, 0, 100)
+            pre = args.prefix
+            feats = {f"{pre}_{var.lower()}_r{r[0]}_{r[1]}": float(blk[mk].mean()) for r, mk in masks.items()}
+            feats[f"{pre}_{var.lower()}_kr"] = float(blk.mean())
             start_utc = R + pd.Timedelta(hours=s)
             for k in range(1, 4):                                            # 블록 안 3시간 (ts = 그 1시간의 끝)
                 ts = (start_utc + pd.Timedelta(hours=k)).tz_localize("UTC").tz_convert("Asia/Seoul")
