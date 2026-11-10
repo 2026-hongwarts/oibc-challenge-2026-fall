@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 
 from oibc_common import (CAP_MIN_FRAC, OUTPUTS, PREDS, WORK, group_penalty, load_sites, load_smp,
-                         local_search)
+                         local_search, swap_search)
 
 
 def residuals(name: str, window: tuple[pd.Timestamp, pd.Timestamp] | None, sites: list[str]):
@@ -48,6 +48,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="구성 최적화")
     ap.add_argument("--preds", default=None, help="오차를 낼 실험 이름 (기본: champion)")
     ap.add_argument("--starts", type=int, default=6, help="무작위 시작점 수")
+    ap.add_argument("--swap", action="store_true",
+                    help="1개 옮기기 결과에 1:1 맞바꾸기를 더해 다시 다듬은 구성도 만든다 → {이름}_swap.csv (설명회 슬 26). "
+                         "판정(미리 정함): 홀→짝·짝→홀·다른 해 세 검증 모두에서 1개 옮기기판보다 벌금이 낮으면 채택")
     args = ap.parse_args()
     name = args.preds or (PREDS / "champion.txt").read_text(encoding="utf-8").strip()
 
@@ -77,6 +80,10 @@ def main() -> None:
         x = best_of(R, w * fit, starts, cap)
         d = (group_penalty(R, x, w * ev) / group_penalty(R, ref, w * ev) - 1) * 100
         print(f"  {label}: {d:+.2f}%  (옮긴 발전소 {int((x != ref).sum())}곳)")
+        if args.swap:
+            xs = swap_search(R, w * fit, x, cap)
+            ds = (group_penalty(R, xs, w * ev) / group_penalty(R, ref, w * ev) - 1) * 100
+            print(f"  {label} 맞바꾸기: {ds:+.2f}%  (1개 옮기기판 대비 {ds - d:+.2f}%p, 옮긴 발전소 {int((xs != ref).sum())}곳)")
 
     x = best_of(R, w, starts, cap)
     g = np.where(x, "G1", "G2")
@@ -91,11 +98,24 @@ def main() -> None:
         R2, w2, _ = residuals(other, cut_window("2023-06-01"), sites)
         d = (group_penalty(R2, x, w2) / group_penalty(R2, ref, w2) - 1) * 100
         print(f"검증 2: 최종 구성을 다른 해(2023-24) 오차에 적용 → 참조 구성 대비 {d:+.2f}%")
+        if args.swap:
+            xs = swap_search(R, w, x, cap)
+            ds = (group_penalty(R2, xs, w2) / group_penalty(R2, ref, w2) - 1) * 100
+            print(f"검증 2 맞바꾸기: {ds:+.2f}%  (1개 옮기기판 대비 {ds - d:+.2f}%p)")
     else:
         print(f"검증 2: {other} 가 없어 건너뜀")
 
     out = OUTPUTS / "compositions"
     out.mkdir(parents=True, exist_ok=True)
+    if args.swap:                     # 1개 옮기기판(기존 파일)은 건드리지 않고 맞바꾸기판만 따로 저장
+        xs = swap_search(R, w, x, cap)
+        gs = np.where(xs, "G1", "G2")
+        capg = {k: float(cap[gs == k].sum()) for k in ("G1", "G2")}
+        print(f"맞바꾸기 최종 구성: 1개 옮기기판과 다른 발전소 {int((xs != x).sum())}곳, G1 {capg['G1']:,.1f}kW / G2 {capg['G2']:,.1f}kW, "
+              f"같은 해 벌금 변화 {(group_penalty(R, xs, w) / group_penalty(R, ref, w) - 1) * 100:+.2f}% (낙관치)")
+        pd.DataFrame({"site_id": sites, "group": gs}).to_csv(out / f"{name}_swap.csv", index=False)
+        print(f"저장 outputs/compositions/{name}_swap.csv")
+        return
     pd.DataFrame({"site_id": sites, "group": g}).to_csv(out / f"{name}.csv", index=False)
     print(f"저장 outputs/compositions/{name}.csv")
 

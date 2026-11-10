@@ -160,3 +160,36 @@ def local_search(R: np.ndarray, w: np.ndarray, x0: np.ndarray, cap: np.ndarray,
         x[i] = ~x[i]
         e1, e2, cur = e1 + R[:, i] * s[i], e2 - R[:, i] * s[i], cand[i]
     return x
+
+
+def swap_search(R: np.ndarray, w: np.ndarray, x0: np.ndarray, cap: np.ndarray,
+                min_frac: float = CAP_MIN_FRAC, max_iter: int = 300) -> np.ndarray:
+    """1개 옮기기(local_search)에 G1 발전소 i ↔ G2 발전소 j 맞바꾸기(1:1 교환)를 번갈아 더한다(용량 하한 유지).
+    설명회 슬 26 "교환(swap) 탐색 · 탐색 중에도 제약을 지키는 방법". 구성이 용량 경계(한 묶음 ≈ 20,000kW)에 붙으면
+    1개 옮기기는 한 방향으로만 움직일 수 있어 멈추는데, 맞바꾸기는 용량을 거의 유지한 채 계속 움직일 수 있다."""
+    x = local_search(R, w, x0, cap, min_frac)
+    tot = cap.sum()
+    for _ in range(max_iter):
+        e1, e2 = R[:, x].sum(1), R[:, ~x].sum(1)
+        cur = float(w @ (np.abs(e1) + np.abs(e2)))
+        g1, g2 = np.flatnonzero(x), np.flatnonzero(~x)
+        c1 = cap[x].sum()
+        R2 = R[:, g2]
+        best_c, best_i, best_j = cur - 1e-9, None, None
+        for i in g1:
+            f = (c1 - cap[i] + cap[g2]) / tot
+            ok = (f >= min_frac) & (f <= 1 - min_frac)
+            if not ok.any():
+                continue
+            ri = R[:, i][:, None]
+            c = w @ (np.abs(e1[:, None] - ri + R2) + np.abs(e2[:, None] + ri - R2))
+            c[~ok] = np.inf
+            k = int(np.argmin(c))
+            if c[k] < best_c:
+                best_c, best_i, best_j = float(c[k]), i, g2[k]
+        if best_i is None:
+            break
+        x = x.copy()
+        x[best_i], x[best_j] = False, True
+        x = local_search(R, w, x, cap, min_frac)
+    return x
