@@ -18,6 +18,10 @@
 GEFS-Aerosols(--source chem): 같은 noaa-gefs-pds 의 chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25, 00시 UTC 실행, 0.25°.
     550nm 에어로졸 광학두께(AOD: 전체, DUAOD: 황사) — 순간값. 공개 약 04:20 UTC(= D-1 13:20 KST) → 마감 전.
     GFS 일사량은 에어로졸을 평년값으로만 넣으므로 황사·연무 정보는 새 정보. 저장 outputs/work/chem_raw.
+GFS 이전 실행(--source gfs18): 대상일 이틀 전(UTC) 18시 실행 = 전날 00시 실행보다 6시간 앞선 실행(시간차 앙상블, HEFTCom2024 1위의 출처 추가).
+    공개 약 21:40 UTC(= D-1 06:40 KST) → 마감 전. 같은 대상 시각을 덮도록 예보 시각 +6(f027 … f042).
+    파일 이름·manifest 의 run_date 는 "가상 실행일" R(= 실제 실행일 + 1, 00시 실행과 같은 R), fhour 는 가상 예보 시각(실제 − 6)으로 적어
+    해석(gfs_decode.py --step-shift 6)과 마감 확인(R 08:00 UTC)을 00시 실행과 똑같이 한다. url·공개 시각은 실제 파일 그대로.
 GEFS(--source gefs): 같은 NODD 의 noaa-gefs-pds (https://registry.opendata.aws/noaa-gefs/), 00시 UTC 실행,
     pgrb2ap5/geavg(앙상블 평균)·gespr(앙상블 표준편차) 0.5°. 공개 약 03:55 ~ 04:02 UTC(= D-1 13시 KST) → 마감 전.
 
@@ -80,6 +84,9 @@ def _list(bucket: str, prefix: str) -> dict[str, str]:
 
 def list_cycle(day: str) -> dict[str, str]:
     """그날 00시 실행의 파일 LastModified."""
+    if SOURCE == "gfs18":
+        prev = (date(int(day[:4]), int(day[4:6]), int(day[6:])) - timedelta(1)).strftime("%Y%m%d")
+        return _list(BUCKET, f"gfs.{prev}/18/atmos/gfs.t18z.pgrb2.{RES}.f0")
     if SOURCE == "chem":
         return _list(GEFS_BUCKET, f"gefs.{day}/00/chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25.f0")
     if SOURCE == "gefs":
@@ -92,6 +99,9 @@ def list_cycle(day: str) -> dict[str, str]:
 
 def _targets(day: str, fh: int) -> list[tuple[str, str, str]]:
     """(파일 변수 이름, 저장소 주소, 키) 목록."""
+    if SOURCE == "gfs18":
+        prev = (date(int(day[:4]), int(day[4:6]), int(day[6:])) - timedelta(1)).strftime("%Y%m%d")
+        return [(v, BUCKET, f"gfs.{prev}/18/atmos/gfs.t18z.pgrb2.{RES}.f{fh + 6:03d}") for v in VARS]
     if SOURCE == "chem":
         return [(v, GEFS_BUCKET, f"gefs.{day}/00/chem/pgrb2ap25/gefs.chem.t00z.a2d_0p25.f{fh:03d}.grib2") for v in VARS]
     if SOURCE == "gefs":
@@ -127,14 +137,16 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--res", default="0p50", choices=["0p50", "1p00"], help="해상도 (1p00 은 outputs/work/gfs_raw_1p00 에)")
     ap.add_argument("--vars", nargs="+", default=["DSWRF", "TCDC"], choices=list(ALL_VARS))
-    ap.add_argument("--source", default="gfs", choices=["gfs", "gefs", "chem"],
+    ap.add_argument("--source", default="gfs", choices=["gfs", "gefs", "chem", "gfs18"],
                     help="gefs: 앙상블 평균·표준편차 0.5° (outputs/work/gefs_raw 에, 변수 이름 끝 M/S)")
     args = ap.parse_args()
     global OUT, RES, VARS, SOURCE
     RES = args.res
     VARS = {k: ALL_VARS[k] for k in args.vars}
     SOURCE = args.source
-    if SOURCE == "chem":
+    if SOURCE == "gfs18":
+        OUT = ROOT / "outputs" / "work" / "gfs18_raw"
+    elif SOURCE == "chem":
         OUT = ROOT / "outputs" / "work" / "chem_raw"
     elif SOURCE == "gefs":
         OUT = ROOT / "outputs" / "work" / "gefs_raw"
