@@ -112,11 +112,16 @@ def main() -> None:
             res.append(penalty(d, m))
         return res
 
-    base = trial(cfg["params"])
-    log(f"기본 설정 벌금 {[f'{v:,.0f}' for v in base]}")
+    prev = pd.read_csv(out) if out.exists() else None   # 중간에 끊겼던 실행의 결과표를 이어 씀
+    r0 = None if prev is None else prev[(prev.trial == 0) & (prev.params == json.dumps(cfg["params"]))]
+    if r0 is not None and len(r0):                      # 같은 기본 설정이면 저장된 벌금 재사용(시드 고정이라 같은 값)
+        base = [float(r0.iloc[0][f"pen_{i}"]) for i in range(len(CUTS))]
+        log(f"기본 설정 벌금(저장된 값) {[f'{v:,.0f}' for v in base]}")
+    else:
+        base = trial(cfg["params"])
+        log(f"기본 설정 벌금 {[f'{v:,.0f}' for v in base]}")
     rows = [dict(trial=0, **{f"pen_{i}": v for i, v in enumerate(base)}, score=1.0, all3=False, params=json.dumps(cfg["params"]))]
-    if out.exists():                                   # 중간에 끊겼던 실행의 결과표를 이어 씀
-        prev = pd.read_csv(out)
+    if prev is not None:
         rows = rows + prev[prev.trial > 0].to_dict("records")
     import optuna
     optuna.logging.set_verbosity(optuna.logging.WARNING)
