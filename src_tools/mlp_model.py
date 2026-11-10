@@ -14,7 +14,8 @@ from __future__ import annotations
 import numpy as np
 
 MLP_PARAMS = dict(hidden=512, layers=3, dropout=0.1, lr=2e-3, weight_decay=1e-5, batch=4096, epochs=20,
-                  n_quantiles=1000, device="cuda")
+                  n_quantiles=1000, device="cuda", emb_dim=16)
+# 범주형 열(--cat site_id 등, pandas category)은 분위수 변환 대신 임베딩(emb_dim 차원)으로 넣는다(조사 권장: 발전소 임베딩).
 
 
 class MLPRegressor:
@@ -22,6 +23,11 @@ class MLPRegressor:
         self.p = {**MLP_PARAMS, **params}
         self.seed = seed
         self.objective = objective
+
+    def _split(self, X):
+        cats = [c for c in X.columns if str(X[c].dtype) == "category"]
+        C = np.stack([X[c].cat.codes.to_numpy().astype("int64") + 1 for c in cats], axis=1) if cats else None  # 0 = 빈칸
+        return X.drop(columns=cats), C, [len(X[c].cat.categories) + 1 for c in cats]
 
     def _prep(self, X, fit: bool):
         from sklearn.preprocessing import QuantileTransformer
@@ -41,16 +47,21 @@ class MLPRegressor:
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         dev = torch.device(self.p["device"] if torch.cuda.is_available() else "cpu")
-        Z = torch.from_numpy(self._prep(X, True)).to(dev)
+        Xn, C, sizes = self._split(X)
+        Z = torch.from_numpy(self._prep(Xn, True)).to(dev)
+        Ct = None if C is None else torch.from_numpy(C).to(dev)
         t = torch.from_numpy(np.asarray(y, dtype="float32")).to(dev)
         w = None if sample_weight is None else torch.from_numpy(np.asarray(sample_weight, dtype="float32")).to(dev)
-        d, h = Z.shape[1], self.p["hidden"]
+        e = self.p["emb_dim"]
+        self.embs = torch.nn.ModuleList([torch.nn.Embedding(n, e) for n in sizes]).to(dev)
+        d, h = Z.shape[1] + e * len(sizes), self.p["hidden"]
         mods = []
         for i in range(self.p["layers"]):
             mods += [torch.nn.Linear(d if i == 0 else h, h), torch.nn.SiLU(), torch.nn.Dropout(self.p["dropout"])]
         mods += [torch.nn.Linear(h, 1)]
         self.net = torch.nn.Sequential(*mods).to(dev)
-        opt = torch.optim.AdamW(self.net.parameters(), lr=self.p["lr"], weight_decay=self.p["weight_decay"])
+        opt = torch.optim.AdamW(list(self.net.parameters()) + list(self.embs.parameters()),
+                                lr=self.p["lr"], weight_decay=self.p["weight_decay"])
         n, bs, ep = len(Z), self.p["batch"], self.p["epochs"]
         steps = (n + bs - 1) // bs
         sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=self.p["lr"], total_steps=steps * ep)
@@ -60,25 +71,40 @@ class MLPRegressor:
             perm = torch.randperm(n, device=dev, generator=g)
             for k in range(steps):
                 idx = perm[k * bs:(k + 1) * bs]
-                out = torch.sigmoid(self.net(Z[idx]).squeeze(1)) * 1.2
+                out = torch.sigmoid(self.net(self._inp(Z[idx], None if Ct is None else Ct[idx])).squeeze(1)) * 1.2
                 err = (out - t[idx]).abs() if self.objective == "l1" else (out - t[idx]) ** 2
                 loss = err.mean() if w is None else (err * w[idx]).sum() / w[idx].sum()
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 opt.step()
                 sched.step()
+        if Ct is not None:                 # 학습에 없던 범주(처음 보는 발전소)는 학습된 임베딩의 평균으로 — 무작위 초깃값 방지
+            with torch.no_grad():
+                for i, emb in enumerate(self.embs):
+                    seen = torch.zeros(emb.num_embeddings, dtype=torch.bool, device=dev)
+                    seen[Ct[:, i].unique()] = True
+                    if seen.any() and (~seen).any():
+                        emb.weight[~seen] = emb.weight[seen].mean(0)
         self.dev = dev
-        del Z, t, w
+        del Z, t, w, Ct
         torch.cuda.empty_cache()
         return self
 
+    def _inp(self, z, c):
+        import torch
+        if c is None or not len(self.embs):
+            return z
+        return torch.cat([z] + [emb(c[:, i]) for i, emb in enumerate(self.embs)], dim=1)
+
     def predict(self, X):
         import torch
-        Z = self._prep(X, False)
+        Xn, C, _ = self._split(X)
+        Z = self._prep(Xn, False)
         self.net.eval()
         out = []
         with torch.no_grad():
             for k in range(0, len(Z), 65536):
                 zb = torch.from_numpy(Z[k:k + 65536]).to(self.dev)
-                out.append((torch.sigmoid(self.net(zb).squeeze(1)) * 1.2).float().cpu().numpy())
+                cb = None if C is None else torch.from_numpy(C[k:k + 65536]).to(self.dev)
+                out.append((torch.sigmoid(self.net(self._inp(zb, cb)).squeeze(1)) * 1.2).float().cpu().numpy())
         return np.concatenate(out)
