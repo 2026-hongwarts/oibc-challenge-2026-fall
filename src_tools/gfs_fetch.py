@@ -131,6 +131,14 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     man = OUT / "manifest.csv"
     new = not man.exists()
+    if not new:      # 중간에 끊겨 공개 시각 기록 없이 남은 파일은 지우고 다시 받는다(규정 §6 근거를 모든 파일에 남기기 위해)
+        with open(man, encoding="utf-8") as f:
+            have = {(r[0], int(r[1]), r[2]) for r in csv.reader(f) if r and r[0] != "run_date"}
+        orphan = [p for p in OUT.glob("*/*.grb2")
+                  if (p.stem.split("_")[0], int(p.stem.split("_")[1][1:]), p.stem.split("_", 2)[2]) not in have]
+        for p in orphan:
+            p.unlink()
+        print(f"공개 시각 기록이 없는 파일 {len(orphan)}개 지움 → 다시 받음", flush=True)
     t0, done = time.time(), 0
     with open(man, "a", newline="", encoding="utf-8") as f, ThreadPoolExecutor(args.workers) as ex:
         w = csv.writer(f)
