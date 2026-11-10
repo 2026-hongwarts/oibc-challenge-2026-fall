@@ -18,6 +18,8 @@
    평균은 위 2 와 같이 3시간으로 나눈다. 표준편차는 선형이 아니라 나눌 수 없으므로(--spread 변수)
    그 시각을 덮는 예보 파일의 구간 값(3시간 또는 6시간 구간)을 그대로 쓴다.
    → gefs_{dswrfm|dswrfs|tcdcm|tcdcs}_r{위도}_{경도}, gefs_*_kr
+6. 순간값 변수(--inst: GFS 가강수량 PWAT, GEFS-Aerosols 광학두께 AOD·DUAOD)는 구간 평균이 아니라 그 예보 시각의 값이다.
+   블록 (s, e] 에는 끝 시각 e 의 값을 그대로 붙인다(f021 … f036 = 블록 끝).
 """
 from __future__ import annotations
 
@@ -60,6 +62,7 @@ def main() -> None:
     ap.add_argument("--cells-out", default=None, help="상자 안 격자 칸 값을 그대로 담은 표 (주성분 분석용)")
     ap.add_argument("--prefix", default="gfs", help="열 이름 앞머리 (GEFS 는 gefs)")
     ap.add_argument("--spread", nargs="*", default=[], help="3시간으로 나누지 않고 구간 값을 그대로 쓸 변수 (앙상블 표준편차)")
+    ap.add_argument("--inst", nargs="*", default=[], help="순간값 변수 (PWAT, AOD, DUAOD): 블록 끝 시각의 값을 그대로")
     args = ap.parse_args()
     raw, out = Path(args.raw), Path(args.out)
     files = sorted(raw.glob("*/*.grb2"))
@@ -81,6 +84,11 @@ def main() -> None:
         except Exception:
             bad += 1
             continue
+        if var in args.inst:
+            if str(step) != str(fh):
+                raise ValueError(f"{p.name}: 순간값인데 예보 시각 {step}, 기대 {fh}")
+            store.setdefault((day, var), {})[fh] = v
+            continue
         a, b = map(int, step.split("-"))
         expect = {21: (18, 21), 24: (18, 24), 27: (24, 27), 30: (24, 30), 33: (30, 33), 36: (30, 36)}[fh]
         if (a, b) != expect:
@@ -100,13 +108,13 @@ def main() -> None:
     for (day, var), fhs in store.items():
         R = pd.Timestamp(day)
         for s, e, short in BLOCKS:
-            if e not in fhs or (short is not None and short not in fhs):
+            if e not in fhs or (short is not None and short not in fhs and var not in args.inst):
                 continue
-            if short is None or var in args.spread:
+            if short is None or var in args.spread or var in args.inst:
                 blk = fhs[e]                                                 # 3시간 평균 그대로, 또는 표준편차는 구간 값 그대로
             else:
                 blk = 2 * fhs[e] - fhs[short]                                # 6시간 평균에서 앞 3시간 평균을 빼 뒤 3시간 평균
-            blk = np.clip(blk, 0, None) if var.startswith("DSWRF") else np.clip(blk, 0, 100)
+            blk = np.clip(blk, 0, None) if var.startswith("DSWRF") or var in args.inst else np.clip(blk, 0, 100)
             pre = args.prefix
             feats = {f"{pre}_{var.lower()}_r{r[0]}_{r[1]}": float(blk[mk].mean()) for r, mk in masks.items()}
             feats[f"{pre}_{var.lower()}_kr"] = float(blk.mean())
