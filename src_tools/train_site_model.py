@@ -266,6 +266,8 @@ def main() -> None:
     w = {"none": None, "cap": tr.capacity_kw.to_numpy(),
          "cap_k": tr.capacity_kw.to_numpy() * k_weight(tr.ts), "recent": recent}[cfg["weight"]]
     pr = df[~df.is_fit]
+    del df                                                  # 전체 표는 더 안 씀 → 메모리 반납(결과 같음, 학습 둘 동시 실행용)
+    import gc; gc.collect()
     if cfg.get("target", "cf") == "csi":
         ref_tr = clear_ref(tr)
         y = (y / ref_tr).clip(0, 3.0).astype("float32")
