@@ -243,3 +243,14 @@ def add_mos_bin(df):
         m = q.merge(tab, left_on=[st, "_bin"], right_index=True, how="left")
         df[f"wx_mosbin_{f}"] = m._m.to_numpy()
     return df
+
+
+# ── P2 (11/11 파이프라인 점검) B 운량·자외선 1시간 어긋남 ──────────────────────
+# B 예보의 자외선 무게중심이 해보다 0.6 ~ 1.2시간 이르고(4개 해 × 12개월 모두), 운량은 ts−2, 자외선은 ts−1 값이
+# 실측과 상관이 가장 높다(학습 기간에서 확인, 기온·습도는 정렬됨). → 같은 발전소(같은 B 지점)의 ts−1 값을 덧붙인다.
+# 같은 발행분이거나 더 이른 시각 값이라 새 정보 누설 없음(규정 §6).
+def add_wb_lag1(df):
+    for v in ["wb_cloud_r10", "wb_cloud_r17", "wb_uv_idx_r10", "wb_uv_idx_r17"]:
+        if v in df:
+            df[f"wx_{v}_lag1"] = _at_offset(df, v, -1)
+    return df
