@@ -13,6 +13,9 @@ PY=${PY:-/c/Users/109so/miniconda3/envs/bio_proj/python.exe}
 GPY=/c/Users/109so/miniconda3/envs/gfs/python.exe
 export PYTHONIOENCODING=utf-8
 log() { echo "[$(date +%m-%d\ %H:%M)] $*"; }
+# GPU 는 사용자 허락 뒤에만(11/11 사용자): outputs/work/gpu.ok 가 생길 때까지 기다린다
+[ -f outputs/work/gpu.ok ] || log "GPU 허락 기다림 (outputs/work/gpu.ok)"
+until [ -f outputs/work/gpu.ok ]; do sleep 60; done
 run() {
   local name=$1 base=$2; shift 2
   for cut in "" 2023-06-01 2022-06-01; do
