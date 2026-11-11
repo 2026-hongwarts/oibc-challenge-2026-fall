@@ -19,6 +19,9 @@ GFS 0.5°·1° 자료가 없는 2021-01 ~ 2021-05 와 밤 시각은 빈칸(NaN).
          참고: HEFTCom2024 1위 SVK·4위 GEB(앞뒤 시각 값), 우리 지역 예보판 X03.
     G8p  add_gfs_pwat           GFS 가강수량(PWAT, 순간값) 1° 지역 42곳 + 전체 (43개)         outputs/work/gfs_pwat.parquet
          참고: AMS 2013-14 2위(중요도 2위 변수).
+    S3h  add_gefs3h_regions     G7 과 같은 GEFS 172개, 단 표준편차를 3시간 단위로 환산(11/11 파이프라인 점검 5번).
+         GEFS 표준편차는 f024·f030·f036 이 6시간 구간 값이라 블록마다 튐(6월 표준편차/평균 0.08 → 0.73).
+         뒤 3시간 블록: 표준편차 × (그 블록 3시간 평균 ÷ 6시간 평균), 6시간 평균 = 두 3시간 평균의 평균. 지역 평균 단위로 근사.
     S4   add_gfs18_regions      GFS 이전 실행(대상일 이틀 전 18시 UTC, 공개 D-1 06:40 KST 경) 일사량·운량 1° 지역 42곳 + 전체 (86개)
          outputs/work/gfs18_kr.parquet. 시간차 앙상블(HEFTCom2024 1위 출처 추가) — 출처 전용 모델(S2·S3 처럼)로 쓴다.
     G9a  add_aer_regions        GEFS-Aerosols 550nm 광학두께(전체·황사) 1° 지역 42곳 + 전체 (86개)  outputs/work/aer_kr.parquet
@@ -191,3 +194,35 @@ def add_aer_regions(df):
 def add_gfs18_regions(df):
     g = _load("gfs18_kr.parquet")
     return _attach(df, g, [c for c in g.columns if c.startswith("g18_")])
+
+
+def _gefs_std3h() -> pd.DataFrame:
+    key = "gefs_kr_std3h"
+    if key not in _CACHE:
+        g = pd.read_parquet(WORK / "gefs_kr.parquet")
+        g["ts"] = pd.to_datetime(g.ts).dt.tz_convert("Asia/Seoul").dt.as_unit("ns")
+        hour = g.ts.dt.hour.to_numpy()
+        day = g.ts.dt.normalize().to_numpy()
+        blk = (hour - 4) // 3                                     # 0 ~ 5 (KST 04 ~ 21시), 1·3·5 가 6시간 구간의 뒤 블록
+        new = {}
+        for c in [c for c in g.columns if c.startswith(("gefs_dswrfs_", "gefs_tcdcs_"))]:
+            cm = c.replace("dswrfs", "dswrfm").replace("tcdcs", "tcdcm")
+            first = pd.Series(g[cm].to_numpy(), index=pd.MultiIndex.from_arrays([day, blk]))
+            bm = first.groupby(level=[0, 1]).first()              # 블록 평균(블록 안에서 같은 값)
+            pair = pd.DataFrame({"d": bm.index.get_level_values(0), "b": bm.index.get_level_values(1), "m": bm.to_numpy()})
+            pair["p"] = pair.b // 2
+            m6 = pair.groupby(["d", "p"]).m.transform("mean")
+            pair["ratio"] = np.where((pair.b % 2 == 1) & (m6 > 1e-6), pair.m / np.where(m6 > 1e-6, m6, 1), 1.0)
+            r = pd.Series(pair.ratio.to_numpy(), index=pd.MultiIndex.from_arrays([pair.d, pair.b]))
+            idx = pd.MultiIndex.from_arrays([day, blk])
+            new[c] = g[c].to_numpy() * r.reindex(idx).fillna(1.0).to_numpy()
+        g = g.copy()
+        for c, v in new.items():
+            g[c] = v
+        _CACHE[key] = _allocate_hourly(g)
+    return _CACHE[key]
+
+
+def add_gefs3h_regions(df):
+    g = _gefs_std3h()
+    return _attach(df, g, [c for c in g.columns if c.startswith("gefs_")])

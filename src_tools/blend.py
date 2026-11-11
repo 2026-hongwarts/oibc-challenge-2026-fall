@@ -29,6 +29,7 @@ SOURCES = {"add_gfs_kr": ("gfs_kr.parquet", "gfs_dswrf_kr"), "add_gfs_regions": 
            "add_gfs_layers_kr": ("gfs_layers.parquet", "gfs_lcdc_kr"),
            "add_gfs_layers_regions": ("gfs_layers.parquet", "gfs_lcdc_kr"),
            "add_gefs_kr": ("gefs_kr.parquet", "gefs_dswrfm_kr"), "add_gefs_regions": ("gefs_kr.parquet", "gefs_dswrfm_kr"),
+           "add_gefs3h_regions": ("gefs_kr.parquet", "gefs_dswrfm_kr"),
            "add_gfs18_regions": ("gfs18_kr.parquet", "g18_dswrf_kr"), "add_aer_regions": ("aer_kr.parquet", "aer_aod_kr"),
            "add_gfs_pwat": ("gfs_pwat.parquet", "gfs_pwat_kr")}
 _MISS: dict = {}
