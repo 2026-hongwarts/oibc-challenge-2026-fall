@@ -25,7 +25,10 @@ from oibc_common import PREDS, PREDS_TEST, ROOT, TZ, WORK
 FOLDS = {"": "2024-06-01", "_cut2023": "2023-06-01", "_cut2022": "2022-06-01", "test": "2025-06-01"}
 
 
-def trend_ratio(a: pd.DataFrame, v_start: str) -> tuple[float, int]:
+SEASON = {12: "겨울", 1: "겨울", 2: "겨울", 3: "봄", 4: "봄", 5: "봄", 6: "여름", 7: "여름", 8: "여름", 9: "가을", 10: "가을", 11: "가을"}
+
+
+def trend_ratio(a: pd.DataFrame, v_start: str, season: str | None = None) -> tuple[float, int]:
     v = pd.Timestamp(v_start, tz=TZ)
     a0, a1, b1 = v - pd.DateOffset(years=2), v - pd.DateOffset(years=1), v
     t = a[(a.ts >= a0) & (a.ts < b1) & a.energy.notna() & (a.elev > 30)].copy()
@@ -35,6 +38,10 @@ def trend_ratio(a: pd.DataFrame, v_start: str) -> tuple[float, int]:
     q = t.groupby(["site_id", "mon", "half"]).cap.agg(lambda s: s.quantile(0.9) if len(s) >= 30 else np.nan).unstack("half")
     q = q.dropna()
     q = q[(q.A > 0.05) & (q.B > 0.05)]
+    if season is not None:                 # 계절별(점검: 하락이 봄·가을에 몰림)
+        q = q[[SEASON[m] == season for m in q.index.get_level_values("mon")]]
+        if len(q) < 30:
+            return 1.0, len(q)
     if len(q) < 50:
         return 1.0, len(q)
     return float((q.B / q.A).median()), len(q)
@@ -44,6 +51,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="맑은 날 수준 추세 보정")
     ap.add_argument("--preds", required=True)
     ap.add_argument("--out", default=None, help="기본: 이름 끝 x2 앞에 r (E12-10cx2 → E12-10crx2)")
+    ap.add_argument("--by-season", action="store_true", help="계절마다 r 을 따로(쌍이 30개 미만인 계절은 1)")
     args = ap.parse_args()
     out = args.out or (args.preds[:-2] + "rx2" if args.preds.endswith("x2") else args.preds + "r")
     a = pd.read_parquet(WORK / "base.parquet", columns=["site_id", "ts", "energy", "capacity_kw", "elev", "cosz"])
@@ -52,9 +60,16 @@ def main() -> None:
         src = (PREDS_TEST / f"{args.preds}.parquet") if suf == "test" else (PREDS / f"{args.preds}{suf}.parquet")
         if not src.exists():
             continue
-        r, n = trend_ratio(a, v)
         p = pd.read_parquet(src)
-        p["pred_kwh"] = p.pred_kwh * r
+        if args.by_season:
+            rs = {se: trend_ratio(a, v, se) for se in ["봄", "여름", "가을", "겨울"]}
+            mon = pd.to_datetime(p.ts).dt.tz_convert(TZ).dt.month.map(SEASON)
+            p["pred_kwh"] = p.pred_kwh * mon.map({k: x[0] for k, x in rs.items()}).to_numpy()
+            r, n = float(np.mean([x[0] for x in rs.values()])), sum(x[1] for x in rs.values())
+            print(f"  계절별 r: " + ", ".join(f"{k} {x[0]:.4f}({x[1]})" for k, x in rs.items()))
+        else:
+            r, n = trend_ratio(a, v)
+            p["pred_kwh"] = p.pred_kwh * r
         dst = (PREDS_TEST / f"{out}.parquet") if suf == "test" else (PREDS / f"{out}{suf}.parquet")
         p.to_parquet(dst, index=False)
         meta = {"exp": dst.stem, "trend_fix_of": src.stem, "ratio": round(r, 5), "pairs": n, "valid_start": v,
