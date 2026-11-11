@@ -20,7 +20,6 @@ run() {
       > "outputs/work/xbatch/${name}_${cut:0:4}.log" 2>&1 || log "  !! 실패 $name $cut"
   done
 }
-until grep -aq "정리 끝" outputs/work/run_clean.log 2>/dev/null; do sleep 60; done     # CPU 학습은 하나씩
 for m in V07T1x2 G5bT1x2 E11-11x2 E11-12x2; do
   run "${m%x2}npx2" "$m" --drop wa_ground_press
 done
