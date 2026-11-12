@@ -226,3 +226,14 @@ def _gefs_std3h() -> pd.DataFrame:
 def add_gefs3h_regions(df):
     g = _gefs_std3h()
     return _attach(df, g, [c for c in g.columns if c.startswith("gefs_")])
+
+
+def add_gfs25_regions(df):
+    """G10 (11/12 판 뒤집기 검토 ③): GFS 0.25° 1시간 평균 일사량(구간 평균을 시간별로 푼 값), 1° 지역 42곳 + 전체(43개).
+    3시간 블록을 cos 천정각으로 나누던 것과 달리 블록 안 구름 변화가 들어 있다. outputs/work/gfs25_kr.parquet(gfs25_decode.py)."""
+    if "gfs25_kr" not in _CACHE:
+        g = pd.read_parquet(WORK / "gfs25_kr.parquet")
+        g["ts"] = pd.to_datetime(g.ts).dt.tz_convert("Asia/Seoul").dt.as_unit("ns")
+        _CACHE["gfs25_kr"] = g                     # 이미 1시간 값이라 cos 배분 안 함
+    g = _CACHE["gfs25_kr"]
+    return _attach(df, g, [c for c in g.columns if c.startswith("g25_")])
