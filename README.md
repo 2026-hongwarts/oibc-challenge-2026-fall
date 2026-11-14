@@ -2,7 +2,6 @@
 
 2026 POSTECH OIBC Big Data Challenge. 태양광 발전소 253곳을 두 묶음(G1, G2)으로 나누고, 묶음별 시간 발전량을 하루 전에 예측한다. 정산금 S에서 수익은 모든 팀이 같으므로 승부는 예측 오차 벌금이다. 마감 2026-11-13.
 
-- 역할 분담·일정: https://claude.ai/artifact/VqqzYusqpUCfzMm7EiFk4i
 - 계획서: [docs/eda_preprocessing_plan.md](docs/eda_preprocessing_plan.md)
 - EDA: [analysis_lab/eda_v2.ipynb](analysis_lab/eda_v2.ipynb) — 데이터 품질과 점수 구조를 분석해 전처리 규칙과 팀의 우선순위를 정한 근거
 
