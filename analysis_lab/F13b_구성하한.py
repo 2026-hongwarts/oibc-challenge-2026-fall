@@ -1,4 +1,4 @@
-"""F13b_구성하한 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 검토 에이전트 작성, 읽기 전용 분석).
+"""F13b_구성하한 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 작성, 읽기 전용 분석).
 구성 하한(253곳 한 묶음 벌금 대비 지금 구성·참조 구성·지점 균형 구성)"""
 import numpy as np, pandas as pd
 R="C:/Users/109so/OneDrive/Desktop/학교/compete/oibc/"

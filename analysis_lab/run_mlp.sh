@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MLP 보조 모델 (11/11 사용자 승인) — G5bT1x2 와 같은 피처(247개)를 PyTorch MLP(GPU)로. src_tools/mlp_model.py
+# MLP 보조 모델 (11/11 결정) — G5bT1x2 와 같은 피처(247개)를 PyTorch MLP(GPU)로. src_tools/mlp_model.py
 # 미리 정한 판정: E13-12x2 = E12-10c 다섯 모델 + M1x2 (여섯 같은 비중, MLP 비중 1/6) 를 E12-10cx2 와 참조 구성으로 비교 → 세 해 모두 개선이면 통과.
 #   (M1x2 단독은 G5bT1x2 와 비교만 해 둔다 — 혼자서는 GBM 보다 못해도 됨)
 # 메모리: CPU 학습(G8w)이 끝난 뒤 시작.   bash analysis_lab/run_mlp.sh >> outputs/work/run_mlp.log 2>&1

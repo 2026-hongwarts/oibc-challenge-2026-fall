@@ -1,4 +1,4 @@
-"""F13a_벌금분해 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 검토 에이전트 작성, 읽기 전용 분석).
+"""F13a_벌금분해 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 작성, 읽기 전용 분석).
 벌금 분해(11~15시 몫, 하루 총량 vs 시각 배분, 하루 오차 자기상관, 달별 치우침)"""
 import numpy as np, pandas as pd
 R="C:/Users/109so/OneDrive/Desktop/학교/compete/oibc/"

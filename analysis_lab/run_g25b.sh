@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 시간별 GFS 일사량(G10)을 나머지 GFS 사용 구성원(XGB 둘, MLP)에도 — GPU (11/12 밤 사용자 허락).
+# 시간별 GFS 일사량(G10)을 나머지 GFS 사용 구성원(XGB 둘, MLP)에도 — GPU (11/12 밤).
 # 미리 정한 판정(세 해 모두 개선, 참조 구성, 같은 장치끼리):
 #   단독(참고): E11-11Hgx2 vs E11-11gx2, E11-12Hgx2 vs E11-12gx2, M2Hx2 vs M2x2
 #   앙상블: E18x2 = [E11-12Hg, E11-11Hg, G5bH, S3, V07T1, M2H]  vs  E17Ggx2 = [E11-12g, E11-11g, G5bH, S3, V07T1, M2]

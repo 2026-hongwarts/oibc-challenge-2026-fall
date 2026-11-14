@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 수상 해법 근거 GFS 피처 걸러내기 — GPU XGBoost(E11-11gx2, XGB 발전율) 위에서 빠르게 (11/10 사용자 승인).
+# 수상 해법 근거 GFS 피처 걸러내기 — GPU XGBoost(E11-11gx2, XGB 발전율) 위에서 빠르게 (11/10 결정).
 # 미리 정한 판정: 각 실험을 E11-11gx2 대비 세 해 비교 → 세 해 모두 개선이면 통과(그다음 LightGBM·앙상블에서 확인).
 #   E13-11dgx2  + add_gfs_daily      GFS 하루 합·평균 (AMS 2013-14 1·3위)
 #   E13-11ngx2  + add_gfs_neighbors  GFS 3시간 전·뒤 값 (HEFTCom2024 1위 SVK·4위 GEB)
@@ -13,8 +13,8 @@ PY=${PY:-/c/Users/109so/miniconda3/envs/bio_proj/python.exe}
 GPY=/c/Users/109so/miniconda3/envs/gfs/python.exe
 export PYTHONIOENCODING=utf-8
 log() { echo "[$(date +%m-%d\ %H:%M)] $*"; }
-# GPU 는 사용자 허락 뒤에만(11/11 사용자): outputs/work/gpu.ok 가 생길 때까지 기다린다
-[ -f outputs/work/gpu.ok ] || log "GPU 허락 기다림 (outputs/work/gpu.ok)"
+# GPU 는 다른 작업과 겹치지 않게: outputs/work/gpu.ok 가 생길 때까지 기다린다
+[ -f outputs/work/gpu.ok ] || log "GPU 차례 기다림 (outputs/work/gpu.ok)"
 until [ -f outputs/work/gpu.ok ]; do sleep 60; done
 run() {
   local name=$1 base=$2; shift 2

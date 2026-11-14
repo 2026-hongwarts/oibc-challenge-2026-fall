@@ -1,4 +1,4 @@
-"""F13d_구성원상관 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 검토 에이전트 작성, 읽기 전용 분석).
+"""F13d_구성원상관 — 판 뒤집기 검토(docs/판_뒤집기_검토.md, 11/11 작성, 읽기 전용 분석).
 구성원 간 한낮 묶음 오차 상관, 가장 좋은 단일 모델"""
 import numpy as np, pandas as pd
 R="C:/Users/109so/OneDrive/Desktop/학교/compete/oibc/"

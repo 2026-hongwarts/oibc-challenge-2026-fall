@@ -1,4 +1,4 @@
-"""11/11 밤샘 자동 진행 (사용자 승인) — 미리 정한 규칙으로만 판단하고, 제출은 하지 않는다(제출은 사용자).
+"""11/11 밤샘 자동 진행 — 미리 정한 규칙으로만 판단하고, 제출은 하지 않는다(제출은 직접).
 
     python analysis_lab/overnight.py >> outputs/work/overnight.log 2>&1      (다시 실행하면 끝난 학습은 건너뜀)
 
@@ -200,7 +200,7 @@ def main() -> None:
               "--composition", str(comp), "--name", f"{cand}_comp"], W / f"overnight_submit_{cand}.log")
     if rc == 0:
         (ROOT / "outputs" / "submissions" / f"{cand}_comp" / ".done").touch()
-        log(f"제출 파일 끝: outputs/submissions/{cand}_comp (제출은 사용자)")
+        log(f"제출 파일 끝: outputs/submissions/{cand}_comp (제출은 직접)")
     else:
         log("  !! 제출 파일 실패")
     log("끝")

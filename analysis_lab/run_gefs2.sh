@@ -7,7 +7,7 @@
 #   E12-10  = 제출 후보(E11-10T1 또는 T2)의 G5bT1 을 통과한 G7(k) 로 바꾸고 S3 를 더함(6개 같은 비중)
 #   E12-10a = G5bT1 → G7(k) 만,  E12-10b = S3 만 더함
 #   → 제출 후보 대비 세 해, 자기 구성으로 E10-08 대비
-# 11/10 사용자 결정: G7k 는 건너뜀(CPU 시간 절약, G7 만 판정) → run_gefs2.sh. 실행 중인 G7 학습이 끝나기를 기다렸다가 이어받는다.
+# 11/10 결정: G7k 는 건너뜀(CPU 시간 절약, G7 만 판정) → run_gefs2.sh. 실행 중인 G7 학습이 끝나기를 기다렸다가 이어받는다.
 # 끝난 것은 건너뜀.   bash analysis_lab/run_gefs2.sh >> outputs/work/run_gefs.log 2>&1
 set -u
 cd "$(dirname "$0")/.."

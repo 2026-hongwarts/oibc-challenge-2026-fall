@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MLP 두 번째(M2) 시드 재현 + 제출 파일 (11/11 사용자 GPU 허락).
+# MLP 두 번째(M2) 시드 재현 + 제출 파일 (11/11, GPU).
 # 미리 정한 판정: E13-13s2x2 = E12-10c + M2s2x2(시드 2·3) vs E12-10cx2, 세 해 모두 개선 → 통과하면
 #   평가 기간 M2 학습 → E13-13 섞기(빠짐 처리) → 일출·일몰 → 추세 → 제출 파일 E13-13ftrx2_comp(구성 E12-10cx2.csv) + 공식 형식 검사
 #   bash analysis_lab/run_mlp2_repro.sh >> outputs/work/run_mlp2_repro.log 2>&1   (끝난 것은 건너뜀)
